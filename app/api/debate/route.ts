@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import OpenAI from "openai";
+import { openRouterReferer } from "@/lib/openrouter-referer";
 
 // ── Persona + style maps ────────────────────────────────────────────────────
 
@@ -108,7 +109,7 @@ async function streamFromOpenRouter(
     headers: {
       Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
       "Content-Type": "application/json",
-      "HTTP-Referer": "https://polymathx.vercel.app",
+      "HTTP-Referer": openRouterReferer(),
       "X-Title": "Polymath X",
     },
     body: JSON.stringify({ model, messages, temperature, max_tokens: 400, stream: true }),

@@ -68,6 +68,7 @@ npm run dev      # terminal 2 — http://localhost:3000
 | Variable | Scope | Purpose |
 |----------|--------|---------|
 | `OPENROUTER_API_KEY` | Server | OpenRouter calls (Claude, Gemini, moderator, summarize, clarify) |
+| `OPENROUTER_HTTP_REFERER` | Server | Optional; OpenRouter `HTTP-Referer` (defaults to `https://$VERCEL_URL` on Vercel, else `http://localhost:3000`) |
 | `OPENAI_API_KEY` | Server | GPT-4o streaming in debate route |
 | `NEXT_PUBLIC_CONVEX_URL` | Client + build | Convex client URL (dev vs prod) |
 | `NEXT_PUBLIC_ACCESS_PASSWORD` | Client | Optional; if set, password screen before app |
@@ -77,7 +78,7 @@ npm run dev      # terminal 2 — http://localhost:3000
 1. Push this repo to GitHub and **import** it in [Vercel](https://vercel.com/) (or link an existing project to the repo).  
 2. Add the **environment variables** above for **Production** (and Preview if you use previews).  
 3. Deploy. Ensure **`NEXT_PUBLIC_CONVEX_URL`** points at your **production** Convex deployment after `npx convex deploy`.  
-4. Optional: **Settings → Domains** — e.g. `polymathx.vercel.app`.  
+4. Optional: **Settings → Domains** — attach your own hostname or the default `*.vercel.app` URL Vercel assigns (not documented in this repo).  
 5. From the project root:
 
    ```bash
@@ -112,4 +113,4 @@ All rights reserved — private project unless you add a `LICENSE` file.
 
 ---
 
-**Live:** [polymathx.vercel.app](https://polymathx.vercel.app) · **Repo:** [github.com/limchinhan123/polymathx](https://github.com/limchinhan123/polymathx)
+**Repo:** [github.com/limchinhan123/polymathx](https://github.com/limchinhan123/polymathx)

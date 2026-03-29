@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { openRouterReferer } from "@/lib/openrouter-referer";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -45,7 +46,7 @@ Generate 3 clarifying questions.`;
       headers: {
         Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://polymathx.vercel.app",
+        "HTTP-Referer": openRouterReferer(),
         "X-Title": "Polymath X",
       },
       body: JSON.stringify({

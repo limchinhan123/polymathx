@@ -71,5 +71,5 @@ echo "==> 5) Redeploy so new env applies"
 echo "==> 6) Convex production (updates backend URL — copy prod URL into Vercel if it changed)"
 npx convex deploy
 
-echo "Done. In Vercel → polymathx → Settings → Domains → add polymathx.vercel.app if needed."
+echo "Done. In Vercel → your project → Settings → Domains — add a custom domain if you want."
 echo "If NEXT_PUBLIC_CONVEX_URL changed after convex deploy, update it in Vercel and redeploy again."
