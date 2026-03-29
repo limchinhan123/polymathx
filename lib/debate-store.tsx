@@ -26,6 +26,7 @@ import {
   mapSettingsForConvex,
   summaryToConvexString,
 } from "./convex-debate-mappers";
+import { clearIdleSuggestionsCache } from "./idle-suggestions";
 import { streamDebate } from "./stream";
 import { toOpenRouterModeratorModel, toOpenRouterSummarizerModel } from "./openrouter-models";
 
@@ -556,6 +557,7 @@ export function DebateProvider({ children }: { children: ReactNode }) {
   }, [saveDebate]);
 
   const newDebate = useCallback(() => {
+    clearIdleSuggestionsCache();
     dispatch({ type: "NEW_DEBATE" });
   }, []);
 

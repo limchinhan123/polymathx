@@ -38,7 +38,7 @@ export default function ClarificationModal() {
               <Scale size={13} className="text-[#EF9F27]" />
             </div>
             <div>
-              <h3 className="text-[13px] font-semibold text-white">Clarify the debate</h3>
+              <h3 className="text-[13px] font-semibold text-white">Clarify the topic</h3>
               <p className="text-[10px] text-[#555]">DeepSeek asks — optional</p>
             </div>
           </div>

@@ -1,7 +1,7 @@
 {
   "name": "Polymath X",
   "short_name": "PolymathX",
-  "description": "A multi-LLM debate platform where Claude, GPT-4o, and Gemini debate any topic",
+  "description": "Xpand your perspective — multi-model AI debates on any topic.",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",

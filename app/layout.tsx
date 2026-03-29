@@ -15,7 +15,8 @@ const dmSans = DM_Sans({
 
 export const metadata: Metadata = {
   title: "Polymath X",
-  description: "A multi-LLM debate platform where Claude, GPT-4o, and Gemini debate any topic",
+  description:
+    "Xpand your perspective — Claude, GPT-4o, and Gemini debate any topic, moderated by DeepSeek.",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,

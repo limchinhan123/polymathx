@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AlertCircle, X } from "lucide-react";
 import { useDebate, selectRounds } from "@/lib/debate-store";
+import { getOrPickIdleSuggestions } from "@/lib/idle-suggestions";
 import MessageBubble from "./MessageBubble";
 import ModeratorBubble from "./ModeratorBubble";
 import RoundDivider from "./RoundDivider";
@@ -18,7 +19,15 @@ export default function ChatThread() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [state.messages, state.isLoading, state.error]);
 
-  const idleSuggestions = useMemo(() => pickRandomTopics(SUGGESTION_POOL, 3), [state.status]);
+  const [idleSuggestions, setIdleSuggestions] = useState<string[] | null>(null);
+
+  useLayoutEffect(() => {
+    if (state.status !== "idle") {
+      setIdleSuggestions(null);
+      return;
+    }
+    setIdleSuggestions(getOrPickIdleSuggestions());
+  }, [state.status]);
 
   if (state.status === "idle") {
     return (
@@ -30,10 +39,21 @@ export default function ChatThread() {
         <p className="text-sm text-[#666] leading-relaxed max-w-[280px]">
           Enter a topic below and watch Claude, GPT-4o, and Gemini debate it — moderated by DeepSeek.
         </p>
-        <div className="flex flex-col gap-2 w-full max-w-[280px] mt-2">
-          {idleSuggestions.map((topic) => (
-            <ExampleTopicChip key={topic} topic={topic} />
-          ))}
+        <div className="flex flex-col gap-2 w-full max-w-[280px] mt-2 min-h-[132px]">
+          {idleSuggestions === null ? (
+            <div className="flex flex-col gap-2 w-full" aria-hidden>
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="h-10 rounded-xl bg-[#141414] border border-[#1A1A1A] animate-pulse"
+                />
+              ))}
+            </div>
+          ) : (
+            idleSuggestions.map((topic) => (
+              <ExampleTopicChip key={topic} topic={topic} />
+            ))
+          )}
         </div>
       </div>
     );
@@ -113,38 +133,6 @@ function buildRenderList(messages: Message[], rounds: number[]): RenderItem[] {
   }
 
   return items;
-}
-
-// ─── Suggestion pool (3 random picks each time you land on idle) ─────────────
-
-const SUGGESTION_POOL = [
-  "Is AGI inevitable by 2030?",
-  "Should AI have legal personhood?",
-  "Is remote work better than office?",
-  "Should universities ban AI-written essays?",
-  "Is universal basic income inevitable if AI automates jobs?",
-  "Do we need a global treaty on autonomous weapons?",
-  "Is privacy dead in the age of AI surveillance?",
-  "Should social platforms be liable for algorithmic harm?",
-  "Is the four-day workweek realistic at scale?",
-  "Should carbon credits be traded on open markets?",
-  "Is space colonization a moral obligation or a distraction?",
-  "Would you trust an AI judge for minor civil disputes?",
-  "Is nostalgia harmful to progress?",
-  "Should children learn to code before they learn a second language?",
-  "Is meritocracy compatible with inherited wealth?",
-  "Should elected officials be required to disclose AI use?",
-  "Is the attention economy sustainable?",
-  "Should deepfakes be criminalized by default?",
-];
-
-function pickRandomTopics(pool: string[], count: number): string[] {
-  const copy = [...pool];
-  for (let i = copy.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [copy[i], copy[j]] = [copy[j], copy[i]];
-  }
-  return copy.slice(0, Math.min(count, copy.length));
 }
 
 function ExampleTopicChip({ topic }: { topic: string }) {

@@ -39,7 +39,7 @@ export default function HistoryTab() {
                      hover:bg-[#F5AB3A] active:scale-95 transition-all"
         >
           <Plus size={15} />
-          New Debate
+          New topic
         </button>
       </div>
 
@@ -52,8 +52,11 @@ export default function HistoryTab() {
         ) : isEmpty ? (
           <div className="flex flex-col items-center justify-center h-full gap-3 px-6 text-center">
             <Clock size={28} className="text-[#2A2A2A]" />
-            <p className="text-sm text-[#444]">No past debates yet</p>
-            <p className="text-xs text-[#333]">Start a debate to see it here</p>
+            <p className="text-sm text-[#444]">No past sessions yet</p>
+            <p className="text-xs text-[#333]">
+              <span className="text-[#EF9F27]">X</span>
+              <span>pand above — your history shows up here</span>
+            </p>
           </div>
         ) : (
           <ul className="divide-y divide-[#1A1A1A]">

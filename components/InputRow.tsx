@@ -64,10 +64,10 @@ export default function InputRow() {
   const placeholder = isListening
     ? "Listening… tap mic to stop"
     : isIdle
-      ? "Enter a debate topic…"
+      ? "What should we explore?"
       : isComplete
-        ? "Debate complete — start a new one"
-        : "Observe the debate…";
+        ? "Complete — start fresh"
+        : "Observe the exchange…";
 
   const canSend = isIdle && text.trim().length > 0 && !isLoading;
 

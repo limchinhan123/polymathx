@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, type FormEvent } from "react";
+import { clearIdleSuggestionsCache } from "@/lib/idle-suggestions";
 
 const STORAGE_KEY = "pmx_access";
 const PASSWORD = process.env.NEXT_PUBLIC_ACCESS_PASSWORD ?? "";
@@ -28,6 +29,7 @@ export default function PasswordGate({ children }: { children: React.ReactNode }
     e.preventDefault();
     if (input === PASSWORD) {
       sessionStorage.setItem(STORAGE_KEY, PASSWORD);
+      clearIdleSuggestionsCache();
       setUnlocked(true);
     } else {
       setError(true);
