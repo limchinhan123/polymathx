@@ -161,4 +161,14 @@ export type DebateAction =
   | { type: "SET_MESSAGE_DONE"; payload: { id: string } }
   | { type: "SET_AGREEMENT_SCORE"; payload: number }
   | { type: "REMOVE_EMPTY_STREAMING_FOR_ROUND"; payload: number }
-  | { type: "RESTORE_STATUS_AFTER_MOD_FAILED" };
+  | { type: "RESTORE_STATUS_AFTER_MOD_FAILED" }
+  | {
+      type: "LOAD_SAVED_DEBATE";
+      payload: {
+        topic: string;
+        messages: Message[];
+        settings: DebateSettings;
+        rounds: number;
+        summary: DebateSummary | null;
+      };
+    };

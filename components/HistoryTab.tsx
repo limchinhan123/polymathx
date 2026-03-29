@@ -71,10 +71,13 @@ export default function HistoryTab() {
 }
 
 function SwipeableHistoryRow({ record }: { record: Doc<"debates"> }) {
+  const { loadSavedDebate } = useDebate();
   const deleteDebate = useMutation(api.debates.deleteDebate);
   const [dx, setDx] = useState(0);
   const originX = useRef(0);
   const dragging = useRef(false);
+  const startClientX = useRef(0);
+  const hasDraggedHorizontally = useRef(false);
 
   const onDelete = useCallback(async () => {
     try {
@@ -86,12 +89,17 @@ function SwipeableHistoryRow({ record }: { record: Doc<"debates"> }) {
 
   const onPointerDown = (e: React.PointerEvent) => {
     dragging.current = true;
+    hasDraggedHorizontally.current = false;
+    startClientX.current = e.clientX;
     originX.current = e.clientX - dx;
     e.currentTarget.setPointerCapture(e.pointerId);
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
     if (!dragging.current) return;
+    if (Math.abs(e.clientX - startClientX.current) > 12) {
+      hasDraggedHorizontally.current = true;
+    }
     const next = e.clientX - originX.current;
     setDx(Math.min(0, Math.max(-120, next)));
   };
@@ -111,6 +119,14 @@ function SwipeableHistoryRow({ record }: { record: Doc<"debates"> }) {
     setDx(0);
   };
 
+  const onRowActivate = () => {
+    if (hasDraggedHorizontally.current) {
+      hasDraggedHorizontally.current = false;
+      return;
+    }
+    loadSavedDebate(record);
+  };
+
   const date = new Date(record.createdAt);
   const dateLabel = date.toLocaleDateString(undefined, {
     month: "short",
@@ -128,6 +144,15 @@ function SwipeableHistoryRow({ record }: { record: Doc<"debates"> }) {
         <Trash2 size={18} />
       </div>
       <div
+        role="button"
+        tabIndex={0}
+        onClick={onRowActivate}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onRowActivate();
+          }
+        }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}

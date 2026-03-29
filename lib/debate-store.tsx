@@ -10,6 +10,7 @@ import React, {
 } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import type { Doc } from "@/convex/_generated/dataModel";
 import {
   type DebateState,
   type DebateAction,
@@ -23,8 +24,11 @@ import {
 import { getOrCreateDeviceId } from "./device-id";
 import {
   mapMessagesForConvex,
+  mapMessagesFromConvex,
   mapSettingsForConvex,
+  mapSettingsFromConvex,
   summaryToConvexString,
+  summaryFromConvexString,
 } from "./convex-debate-mappers";
 import { clearIdleSuggestionsCache } from "./idle-suggestions";
 import { streamDebate } from "./stream";
@@ -248,6 +252,27 @@ function debateReducer(state: DebateState, action: DebateAction): DebateState {
         settings: state.settings,
       };
 
+    case "LOAD_SAVED_DEBATE": {
+      const p = action.payload;
+      return {
+        ...initialState,
+        settings: p.settings,
+        topic: p.topic,
+        messages: p.messages,
+        currentRound: p.rounds,
+        clarifyingQuestions: [],
+        summary: p.summary,
+        status: p.summary ? "complete" : p.rounds >= 2 ? "round2" : "round1",
+        drawerOpen: false,
+        summaryOpen: false,
+        clarificationOpen: false,
+        isLoading: false,
+        loadingModel: null,
+        error: null,
+        agreementScore: null,
+      };
+    }
+
     default:
       return state;
   }
@@ -265,6 +290,7 @@ interface DebateContextValue {
   continueDebate: () => Promise<void>;
   triggerSummarize: () => Promise<void>;
   newDebate: () => void;
+  loadSavedDebate: (record: Doc<"debates">) => void;
   updateSettings: (settings: Partial<DebateSettings>) => void;
 }
 
@@ -561,6 +587,20 @@ export function DebateProvider({ children }: { children: ReactNode }) {
     dispatch({ type: "NEW_DEBATE" });
   }, []);
 
+  const loadSavedDebate = useCallback((record: Doc<"debates">) => {
+    dispatch({
+      type: "LOAD_SAVED_DEBATE",
+      payload: {
+        topic: record.topic,
+        messages: mapMessagesFromConvex(record.messages),
+        settings: mapSettingsFromConvex(record.settings),
+        rounds: record.rounds,
+        summary: summaryFromConvexString(record.summary),
+      },
+    });
+    dispatch({ type: "CLOSE_DRAWER" });
+  }, []);
+
   const updateSettings = useCallback((settings: Partial<DebateSettings>) => {
     dispatch({ type: "UPDATE_SETTINGS", payload: settings });
   }, []);
@@ -575,6 +615,7 @@ export function DebateProvider({ children }: { children: ReactNode }) {
     continueDebate,
     triggerSummarize,
     newDebate,
+    loadSavedDebate,
     updateSettings,
   };
 
