@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Polymath X — Offline</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "DM Sans", system-ui, sans-serif;
+      background: #0A0A0A;
+      color: #fff;
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 24px;
+    }
+    .badge {
+      width: 64px;
+      height: 64px;
+      background: #141414;
+      border: 1px solid #2A2A2A;
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+      font-weight: 700;
+      color: #EF9F27;
+      margin-bottom: 20px;
+    }
+    h1 { font-size: 20px; font-weight: 600; margin-bottom: 8px; }
+    p { font-size: 14px; color: #666; line-height: 1.5; max-width: 280px; }
+    button {
+      margin-top: 24px;
+      padding: 10px 24px;
+      background: #EF9F27;
+      color: #000;
+      border: none;
+      border-radius: 12px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="badge">X</div>
+  <h1>You're offline</h1>
+  <p>Polymath X needs a connection to run debates. Check your network and try again.</p>
+  <button onclick="window.location.reload()">Retry</button>
+</body>
+</html>

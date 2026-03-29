@@ -1,0 +1,167 @@
+"use client";
+
+import { X, Download, CheckCircle2, Swords, Trophy, Lightbulb, HelpCircle } from "lucide-react";
+import { useDebate } from "@/lib/debate-store";
+import { type DebateSummary } from "@/lib/types";
+
+export default function SummarySheet() {
+  const { state, dispatch } = useDebate();
+
+  if (!state.summaryOpen || !state.summary) return null;
+
+  const { summary, topic } = state;
+
+  const handleExport = () => {
+    const markdown = buildMarkdown(topic, summary);
+    const blob = new Blob([markdown], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `polymath-x-${Date.now()}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 bg-black/70 backdrop-blur-sm z-30 animate-fade-in"
+        onClick={() => dispatch({ type: "CLOSE_SUMMARY" })}
+        aria-hidden="true"
+      />
+
+      {/* Bottom sheet */}
+      <div
+        className="fixed bottom-0 left-0 right-0 z-40 bg-[#0F0F0F] border-t border-[#2A2A2A]
+                   rounded-t-2xl animate-slide-up max-h-[90vh] flex flex-col"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Debate summary"
+      >
+        <div className="drag-handle mt-3 shrink-0" />
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 pb-3 shrink-0 border-b border-[#1A1A1A]">
+          <div>
+            <h3 className="text-[14px] font-semibold text-white">Debate Summary</h3>
+            <p className="text-[10px] text-[#555] truncate max-w-[220px]">{topic}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleExport}
+              aria-label="Export as markdown"
+              className="w-8 h-8 flex items-center justify-center rounded-lg bg-[#1A1A1A] border border-[#2A2A2A]
+                         text-[#666] hover:text-[#EF9F27] hover:border-[#EF9F27]/30 transition-colors"
+            >
+              <Download size={14} />
+            </button>
+            <button
+              onClick={() => dispatch({ type: "CLOSE_SUMMARY" })}
+              aria-label="Close summary"
+              className="w-8 h-8 flex items-center justify-center rounded-lg text-[#666] hover:text-white hover:bg-[#1A1A1A] transition-colors"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+
+        {/* Scrollable content */}
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 pb-safe">
+          <SummarySection
+            icon={<CheckCircle2 size={13} className="text-[#10A37F]" />}
+            label="Consensus"
+            color="#10A37F"
+            content={summary.consensus}
+          />
+          <SummarySection
+            icon={<Swords size={13} className="text-[#4285F4]" />}
+            label="Core Tension"
+            color="#4285F4"
+            content={summary.coreTension}
+          />
+          <SummarySection
+            icon={<Trophy size={13} className="text-[#EF9F27]" />}
+            label="Strongest Argument"
+            color="#EF9F27"
+            content={summary.strongestArgument}
+          />
+          <SummarySection
+            icon={<Lightbulb size={13} className="text-[#8B7CF6]" />}
+            label="Practical Takeaway"
+            color="#8B7CF6"
+            content={summary.practicalTakeaway}
+          />
+          <SummarySection
+            icon={<HelpCircle size={13} className="text-[#666]" />}
+            label="Open Questions"
+            color="#555"
+            content={summary.openQuestions}
+          />
+          <div className="h-4" />
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ─── Section component ────────────────────────────────────────────────────────
+
+interface SummarySectionProps {
+  icon: React.ReactNode;
+  label: string;
+  color: string;
+  content: string;
+}
+
+function SummarySection({ icon, label, color, content }: SummarySectionProps) {
+  return (
+    <div
+      className="rounded-xl p-3 border"
+      style={{
+        backgroundColor: `${color}0A`,
+        borderColor: `${color}25`,
+      }}
+    >
+      <div className="flex items-center gap-1.5 mb-2">
+        {icon}
+        <span
+          className="text-[10px] font-semibold uppercase tracking-[0.12em]"
+          style={{ color }}
+        >
+          {label}
+        </span>
+      </div>
+      <p className="text-[12px] text-[#CCC] leading-relaxed">{content}</p>
+    </div>
+  );
+}
+
+// ─── Markdown builder ─────────────────────────────────────────────────────────
+
+function buildMarkdown(topic: string, s: DebateSummary): string {
+  return `# Polymath X — Debate Summary
+
+**Topic:** ${topic}
+
+---
+
+## ✅ Consensus
+${s.consensus}
+
+## ⚡ Core Tension
+${s.coreTension}
+
+## 🏆 Strongest Argument
+${s.strongestArgument}
+
+## 💡 Practical Takeaway
+${s.practicalTakeaway}
+
+## ❓ Open Questions
+${s.openQuestions}
+
+---
+*Generated by Polymath X · ${new Date().toLocaleString()}*
+`;
+}
