@@ -2,6 +2,7 @@
   "name": "polymath-x",
   "version": "0.1.0",
   "private": true,
+  "description": "Polymath X — multi-model AI debates (Claude, GPT-4o, Gemini) with DeepSeek moderation. Next.js + Convex.",
   "scripts": {
     "dev": "next dev",
     "convex:dev": "convex dev",

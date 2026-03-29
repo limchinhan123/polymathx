@@ -63,6 +63,7 @@ add_env() {
 add_env OPENROUTER_API_KEY
 add_env OPENAI_API_KEY
 add_env NEXT_PUBLIC_CONVEX_URL
+add_env NEXT_PUBLIC_ACCESS_PASSWORD
 
 echo "==> 5) Redeploy so new env applies"
 "${VC[@]}" --prod --yes
