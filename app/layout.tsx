@@ -4,6 +4,7 @@ import "./globals.css";
 import { DebateProvider } from "@/lib/debate-store";
 import { ConvexClientProvider } from "@/components/ConvexClientProvider";
 import ServiceWorkerRegistrar from "@/components/ServiceWorkerRegistrar";
+import PasswordGate from "@/components/PasswordGate";
 
 const dmSans = DM_Sans({
   subsets: ["latin"],
@@ -39,11 +40,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className="dark">
       <body className={`${dmSans.variable} font-sans antialiased bg-[#0A0A0A] text-white`}>
-        <ConvexClientProvider>
-          <DebateProvider>
-            {children}
-          </DebateProvider>
-        </ConvexClientProvider>
+        <PasswordGate>
+          <ConvexClientProvider>
+            <DebateProvider>
+              {children}
+            </DebateProvider>
+          </ConvexClientProvider>
+        </PasswordGate>
         <ServiceWorkerRegistrar />
       </body>
     </html>
