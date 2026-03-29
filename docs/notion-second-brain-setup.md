@@ -2,6 +2,8 @@
 
 This project’s canonical notes live in **`second-brain-polymath-x.md`**. Use Notion as your dashboard; keep the markdown in git as the durable source.
 
+**Existing Notion page (from MCP):** [Personal second brain — Polymath X](https://www.notion.so/33299bef333881878e5dc9ecdd2ad67a) — move it under your wiki / pin to sidebar as you like.
+
 ## Option A — Import once (fastest)
 
 1. Open [Notion](https://notion.so) → workspace where you want the hub.

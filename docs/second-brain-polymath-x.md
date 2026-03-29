@@ -2,6 +2,8 @@
 
 *Capture from build & deploy work. No secrets or production URLs belong here.*
 
+**Notion mirror:** [Personal second brain — Polymath X](https://www.notion.so/33299bef333881878e5dc9ecdd2ad67a)
+
 ---
 
 ## One-line summary
