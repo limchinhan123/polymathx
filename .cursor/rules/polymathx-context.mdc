@@ -1,0 +1,15 @@
+---
+description: Polymath X — read project docs before substantive changes
+alwaysApply: true
+---
+
+# Polymath X
+
+Before non-trivial edits, **read `AGENTS.md`** at the repo root for stack, secrets, and conventions.
+
+For deploy, env vars, Convex prod URL, key rotation, and troubleshooting, use **`docs/runbook.md`**.
+
+**Hard constraints:**
+- Never commit `.env`, `.env.local`, or API keys. Only `.env.example` has placeholders.
+- Do not hardcode public deployment URLs in source; OpenRouter referer uses `lib/openrouter-referer.ts`.
+- Do not construct `new OpenAI({ apiKey })` at module scope in API routes — lazy-init so `next build` works without secrets.
