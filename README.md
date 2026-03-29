@@ -18,7 +18,7 @@ What is this? A Multi-model AI debates on any topic — Claude, GPT-4o & Gemini 
 - **Clarifying questions** before round 1  
 - **Round 2** with moderator follow-up  
 - **AI summary** export-friendly markdown  
-- **History** per device, persisted in Convex  
+- **History** persisted in Convex — use **Settings → History sync** to copy your key and paste it on another browser (phone ↔ desktop) so both see the same list  
 - **Optional password gate** (`NEXT_PUBLIC_ACCESS_PASSWORD`) to limit casual traffic  
 - **PWA-friendly** shell (manifest + service worker)
 

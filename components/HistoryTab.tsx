@@ -4,7 +4,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Plus, Clock, ChevronRight, Trash2 } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
 import { useDebate } from "@/lib/debate-store";
-import { getOrCreateDeviceId } from "@/lib/device-id";
+import {
+  getOrCreateDeviceId,
+  HISTORY_SYNC_KEY_CHANGED_EVENT,
+} from "@/lib/device-id";
 import { api } from "@/convex/_generated/api";
 import type { Doc } from "@/convex/_generated/dataModel";
 
@@ -13,7 +16,10 @@ export default function HistoryTab() {
   const [deviceId, setDeviceId] = useState<string | null>(null);
 
   useEffect(() => {
-    setDeviceId(getOrCreateDeviceId());
+    const sync = () => setDeviceId(getOrCreateDeviceId());
+    sync();
+    window.addEventListener(HISTORY_SYNC_KEY_CHANGED_EVENT, sync);
+    return () => window.removeEventListener(HISTORY_SYNC_KEY_CHANGED_EVENT, sync);
   }, []);
 
   const debates = useQuery(

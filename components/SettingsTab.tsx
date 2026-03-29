@@ -1,6 +1,13 @@
 "use client";
 
+import { useCallback, useEffect, useState } from "react";
+import { Copy, Link2 } from "lucide-react";
 import { useDebate } from "@/lib/debate-store";
+import {
+  getOrCreateDeviceId,
+  setHistorySyncKey,
+  HISTORY_SYNC_KEY_CHANGED_EVENT,
+} from "@/lib/device-id";
 import {
   type DebateStyle,
   type ClaudePersona,
@@ -19,6 +26,8 @@ export default function SettingsTab() {
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-6">
+      <HistorySyncSection />
+
       {/* ── Debaters ── */}
       <Section title="Debaters">
         <ModelSelect
@@ -177,6 +186,113 @@ export default function SettingsTab() {
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
+
+function HistorySyncSection() {
+  const [syncKey, setSyncKey] = useState("");
+  const [paste, setPaste] = useState("");
+  const [notice, setNotice] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
+
+  const refreshKey = useCallback(() => {
+    setSyncKey(getOrCreateDeviceId());
+  }, []);
+
+  useEffect(() => {
+    refreshKey();
+    window.addEventListener(HISTORY_SYNC_KEY_CHANGED_EVENT, refreshKey);
+    return () => window.removeEventListener(HISTORY_SYNC_KEY_CHANGED_EVENT, refreshKey);
+  }, [refreshKey]);
+
+  const showNotice = (tone: "ok" | "err", text: string) => {
+    setNotice({ tone, text });
+    window.setTimeout(() => setNotice(null), 4000);
+  };
+
+  const copyKey = async () => {
+    if (!syncKey) return;
+    try {
+      await navigator.clipboard.writeText(syncKey);
+      showNotice("ok", "Sync key copied.");
+    } catch {
+      showNotice("err", "Could not copy — select and copy manually.");
+    }
+  };
+
+  const applyPastedKey = () => {
+    const result = setHistorySyncKey(paste);
+    if (result.ok) {
+      setPaste("");
+      refreshKey();
+      showNotice("ok", "This device now uses the same history as that key.");
+    } else {
+      showNotice("err", result.error);
+    }
+  };
+
+  return (
+    <Section title="History sync">
+      <div className="rounded-xl border border-[#2A2A2A] bg-[#141414]/80 p-3 space-y-3">
+        <p className="text-[10px] text-[#666] leading-relaxed">
+          Each browser starts with its own key. To see the same saved debates on your phone and Mac,
+          open <span className="text-[#888]">Settings</span> here, copy the key, then paste it under
+          History sync on the other device.
+        </p>
+        <p className="text-[10px] text-[#555] leading-relaxed">
+          Anyone with this key can load or delete that history — treat it like a simple passphrase.
+        </p>
+        <div className="flex items-start gap-2">
+          <code className="flex-1 min-w-0 break-all text-[10px] leading-snug text-[#AAA] bg-[#0A0A0A] border border-[#1A1A1A] rounded-lg px-2 py-1.5 font-mono">
+            {syncKey || "…"}
+          </code>
+          <button
+            type="button"
+            onClick={copyKey}
+            disabled={!syncKey}
+            className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[#2A2A2A] text-[11px] text-[#CCC]
+                       hover:border-[#EF9F27]/40 hover:text-[#EF9F27] disabled:opacity-40 transition-colors"
+          >
+            <Copy size={12} />
+            Copy
+          </button>
+        </div>
+        <div className="flex flex-col gap-2 pt-1 border-t border-[#1A1A1A]">
+          <span className="text-[10px] text-[#555] flex items-center gap-1.5">
+            <Link2 size={11} className="text-[#444]" aria-hidden />
+            Use key from another device
+          </span>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={paste}
+              onChange={(e) => setPaste(e.target.value)}
+              placeholder="Paste UUID here"
+              autoComplete="off"
+              spellCheck={false}
+              className="flex-1 min-w-0 bg-[#0A0A0A] border border-[#2A2A2A] rounded-lg px-2.5 py-2 text-[11px] text-[#DDD] font-mono
+                         placeholder-[#444] outline-none focus:border-[#EF9F27]/35"
+            />
+            <button
+              type="button"
+              onClick={applyPastedKey}
+              disabled={!paste.trim()}
+              className="shrink-0 px-3 py-2 rounded-lg bg-[#EF9F27]/15 border border-[#EF9F27]/35 text-[11px] font-semibold text-[#EF9F27]
+                         hover:bg-[#EF9F27]/25 disabled:opacity-40 transition-colors"
+            >
+              Apply
+            </button>
+          </div>
+        </div>
+        {notice && (
+          <p
+            role="status"
+            className={`text-[10px] leading-snug ${notice.tone === "ok" ? "text-emerald-400/90" : "text-red-400/90"}`}
+          >
+            {notice.text}
+          </p>
+        )}
+      </div>
+    </Section>
+  );
+}
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
