@@ -114,7 +114,8 @@ All rights reserved — private project unless you add a `LICENSE` file.
 ## Documentation
 
 - **`AGENTS.md`** — short notes for tools and contributors (stack, secrets, conventions).  
-- **`docs/runbook.md`** — step-by-step ops (deploy, Convex prod, rotate keys, troubleshooting).
+- **`docs/runbook.md`** — step-by-step ops (deploy, Convex prod, rotate keys, troubleshooting).  
+- **`.cursor/rules/polymathx-context.mdc`** — Cursor loads this for the repo (`alwaysApply`); points at the docs above.
 
 ---
 
