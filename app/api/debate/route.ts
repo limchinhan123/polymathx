@@ -83,9 +83,17 @@ interface DebateRequestBody {
 
 type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 
-// ── OpenAI client ───────────────────────────────────────────────────────────
+// ── OpenAI client (lazy: avoid build-time init when OPENAI_API_KEY is unset) ─
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+let openaiClient: OpenAI | null = null;
+function getOpenAI(): OpenAI {
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) {
+    throw new Error("OPENAI_API_KEY is not set");
+  }
+  openaiClient ??= new OpenAI({ apiKey: key });
+  return openaiClient;
+}
 
 // ── Streaming helpers ───────────────────────────────────────────────────────
 
@@ -140,7 +148,7 @@ async function streamFromOpenAI(
   temperature: number,
   onChunk: (text: string) => void
 ): Promise<void> {
-  const stream = await openai.chat.completions.create({
+  const stream = await getOpenAI().chat.completions.create({
     model,
     messages,
     temperature,
