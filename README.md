@@ -115,7 +115,8 @@ All rights reserved — private project unless you add a `LICENSE` file.
 
 - **`AGENTS.md`** — short notes for tools and contributors (stack, secrets, conventions).  
 - **`docs/runbook.md`** — step-by-step ops (deploy, Convex prod, rotate keys, troubleshooting).  
-- **`.cursor/rules/polymathx-context.mdc`** — Cursor loads this for the repo (`alwaysApply`); points at the docs above.
+- **`.cursor/rules/polymathx-context.mdc`** — Cursor loads this for the repo (`alwaysApply`); points at the docs above.  
+- **`docs/second-brain-polymath-x.md`** — personal knowledge capture (session learnings); pair with **`docs/notion-second-brain-setup.md`** to import into Notion.
 
 ---
 
