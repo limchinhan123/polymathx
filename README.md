@@ -4,7 +4,9 @@
 
 ---
 
-### Suggested GitHub “About” description (copy-paste)
+What is this? A Multi-model AI debates on any topic — Claude, GPT-4o & Gemini with DeepSeek moderation. Next.js App Router + Convex + OpenRouter.
+
+
 
 > Multi-model AI debates on any topic — Claude, GPT-4o & Gemini with DeepSeek moderation. Next.js App Router + Convex + OpenRouter.
 
