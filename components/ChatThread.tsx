@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { AlertCircle, X } from "lucide-react";
 import { useDebate, selectRounds } from "@/lib/debate-store";
 import MessageBubble from "./MessageBubble";
@@ -18,18 +18,20 @@ export default function ChatThread() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [state.messages, state.isLoading, state.error]);
 
+  const idleSuggestions = useMemo(() => pickRandomTopics(SUGGESTION_POOL, 3), [state.status]);
+
   if (state.status === "idle") {
     return (
       <div className="flex-1 flex flex-col items-center justify-center px-6 text-center gap-4 chat-thread overflow-y-auto">
-        <div className="w-16 h-16 rounded-2xl bg-[#141414] border border-[#2A2A2A] flex items-center justify-center mb-2">
-          <span className="text-2xl font-bold text-[#EF9F27]">X</span>
-        </div>
-        <h2 className="text-xl font-semibold text-white">Start a debate</h2>
+        <h2 className="text-xl font-semibold tracking-tight">
+          <span className="text-[#EF9F27]">X</span>
+          <span className="text-white">pand your perspective</span>
+        </h2>
         <p className="text-sm text-[#666] leading-relaxed max-w-[280px]">
           Enter a topic below and watch Claude, GPT-4o, and Gemini debate it — moderated by DeepSeek.
         </p>
-        <div className="flex flex-wrap gap-2 justify-center mt-2">
-          {EXAMPLE_TOPICS.map((topic) => (
+        <div className="flex flex-col gap-2 w-full max-w-[280px] mt-2">
+          {idleSuggestions.map((topic) => (
             <ExampleTopicChip key={topic} topic={topic} />
           ))}
         </div>
@@ -113,21 +115,46 @@ function buildRenderList(messages: Message[], rounds: number[]): RenderItem[] {
   return items;
 }
 
-// ─── Example topics ───────────────────────────────────────────────────────────
+// ─── Suggestion pool (3 random picks each time you land on idle) ─────────────
 
-const EXAMPLE_TOPICS = [
+const SUGGESTION_POOL = [
   "Is AGI inevitable by 2030?",
   "Should AI have legal personhood?",
   "Is remote work better than office?",
+  "Should universities ban AI-written essays?",
+  "Is universal basic income inevitable if AI automates jobs?",
+  "Do we need a global treaty on autonomous weapons?",
+  "Is privacy dead in the age of AI surveillance?",
+  "Should social platforms be liable for algorithmic harm?",
+  "Is the four-day workweek realistic at scale?",
+  "Should carbon credits be traded on open markets?",
+  "Is space colonization a moral obligation or a distraction?",
+  "Would you trust an AI judge for minor civil disputes?",
+  "Is nostalgia harmful to progress?",
+  "Should children learn to code before they learn a second language?",
+  "Is meritocracy compatible with inherited wealth?",
+  "Should elected officials be required to disclose AI use?",
+  "Is the attention economy sustainable?",
+  "Should deepfakes be criminalized by default?",
 ];
+
+function pickRandomTopics(pool: string[], count: number): string[] {
+  const copy = [...pool];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy.slice(0, Math.min(count, copy.length));
+}
 
 function ExampleTopicChip({ topic }: { topic: string }) {
   const { startDebate } = useDebate();
   return (
     <button
+      type="button"
       onClick={() => startDebate(topic)}
-      className="text-[11px] px-3 py-1.5 rounded-full border border-[#2A2A2A] text-[#888]
-                 hover:border-[#EF9F27]/40 hover:text-[#EF9F27] hover:bg-[#EF9F27]/5 transition-all"
+      className="text-left text-[11px] px-3 py-2.5 rounded-xl border border-[#2A2A2A] text-[#888]
+                 hover:border-[#EF9F27]/40 hover:text-[#EF9F27] hover:bg-[#EF9F27]/5 transition-all w-full"
     >
       {topic}
     </button>
