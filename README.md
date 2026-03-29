@@ -111,6 +111,11 @@ A helper script (local machine, interactive login) lives at `scripts/deploy-poly
 
 All rights reserved — private project unless you add a `LICENSE` file.
 
+## Documentation
+
+- **`AGENTS.md`** — short notes for tools and contributors (stack, secrets, conventions).  
+- **`docs/runbook.md`** — step-by-step ops (deploy, Convex prod, rotate keys, troubleshooting).
+
 ---
 
 **Repo:** [github.com/limchinhan123/polymathx](https://github.com/limchinhan123/polymathx)
