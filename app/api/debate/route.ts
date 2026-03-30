@@ -73,8 +73,8 @@ const DEBATE_STYLES: Record<string, string> = {
 };
 
 const CLAUDE_MODEL_MAP: Record<string, string> = {
-  "claude-3-5-sonnet-20241022": "anthropic/claude-sonnet-4-5",
-  "claude-3-haiku-20240307": "anthropic/claude-haiku-4-5",
+  "claude-3-5-sonnet-20241022": "anthropic/claude-sonnet-4.5",
+  "claude-3-haiku-20240307": "anthropic/claude-haiku-4.5",
 };
 
 const BLACK_HAT_MODEL = "deepseek/deepseek-r1";
@@ -468,7 +468,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   const gptPersonaDef = GPT_PERSONAS[gptPersona] ?? gptPersona;
   const geminiPersonaDef = GEMINI_PERSONAS[geminiPersona] ?? geminiPersona;
 
-  let claudeModel = settings.claudeModel ?? "anthropic/claude-sonnet-4-5";
+  let claudeModel = settings.claudeModel ?? "anthropic/claude-sonnet-4.5";
   if (CLAUDE_MODEL_MAP[claudeModel]) claudeModel = CLAUDE_MODEL_MAP[claudeModel];
   const gptModel = settings.gptModel ?? "gpt-4o";
   const geminiModel = settings.geminiModel ?? "google/gemini-2.0-flash-001";
