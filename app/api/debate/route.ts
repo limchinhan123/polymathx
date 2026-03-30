@@ -192,11 +192,6 @@ function stripMarkdown(text: string): string {
 
 type OpenRouterStreamOptions = {
   maxTokens?: number;
-  /**
-   * Claude on OpenRouter can stream reasoning separately; widen max_tokens and ask OpenRouter
-   * not to mix hidden reasoning into the same budget as the user-visible answer when supported.
-   */
-  claudeDebate?: boolean;
 };
 
 /** Pull visible text from an OpenAI-style delta (string, array parts, or rare reasoning string). */
@@ -245,9 +240,6 @@ async function streamFromOpenRouter(
     max_tokens,
     stream: true,
   };
-  if (options?.claudeDebate) {
-    body.reasoning = { exclude: true };
-  }
 
   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
@@ -356,8 +348,6 @@ async function streamClaudeDebate(
       const isHaikuModel = model.toLowerCase().includes("haiku");
       await streamFromOpenRouter(model, messages, temperature, onChunk, {
         maxTokens: isHaikuModel ? DEBATE_MAX_TOKENS_OPENROUTER : DEBATE_MAX_TOKENS_CLAUDE,
-        /** Sonnet 4.x reasoning budget; Haiku path stays standard chat. */
-        claudeDebate: !isHaikuModel,
       });
       return;
     } catch (err) {
