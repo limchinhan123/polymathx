@@ -1,6 +1,6 @@
 "use client";
 
-import { Zap, FileText, Scale } from "lucide-react";
+import { Zap, FileText, Scale, Loader2 } from "lucide-react";
 import { useDebate } from "@/lib/debate-store";
 
 function hasStreamingInRound(
@@ -10,13 +10,17 @@ function hasStreamingInRound(
   return messages.some((m) => !m.isModerator && m.round === round && m.isStreaming);
 }
 
+/** Inter-round pause after moderation or stream timeout (before the next debater round). */
+function isPendingRoundStatus(status: string): boolean {
+  return status === "pending_round";
+}
+
 export default function DebateControls() {
   const { state, prepareForRound2, startRound2, triggerSummarize, triggerJudge, dispatch } =
     useDebate();
 
-  const { status, isLoading, interRoundContext, currentRound, messages } = state;
+  const { status, isLoading, interRoundContext, currentRound, pendingRound, messages } = state;
 
-  const streamingR1 = hasStreamingInRound(messages, 1);
   const streamingCurrent =
     currentRound > 0 && hasStreamingInRound(messages, currentRound);
 
@@ -26,31 +30,41 @@ export default function DebateControls() {
     currentRound > 0 &&
     !hasStreamingInRound(messages, currentRound);
 
-  const showAwaitingNext = status === "awaiting_next_round" && !isLoading;
+  const showAwaitingInterRound = isPendingRoundStatus(status) && !isLoading;
 
   const prepareLabel =
-    currentRound === 1 ? "Continue to Round 2" : `Prepare Round ${currentRound + 1}`;
+    currentRound === 1
+      ? "Get Moderator's Take →"
+      : `Prepare Round ${currentRound + 1}`;
 
-  const startNextLabel = `Start Round ${currentRound + 1}`;
+  const startNextLabel =
+    pendingRound >= 1 ? `Start Round ${pendingRound}` : `Start Round ${currentRound + 1}`;
 
+  // Do not offer Summarize after Round 1 only — user must reach moderation / Round 2 path first.
   const showSummarize =
     !isLoading &&
-    ((status === "round1" && currentRound === 1 && !streamingR1) ||
-      (status === "debating" && currentRound >= 2 && !streamingCurrent) ||
-      (showAwaitingNext && currentRound >= 2));
+    ((status === "debating" && currentRound >= 2 && !streamingCurrent) ||
+      (showAwaitingInterRound && currentRound >= 2));
 
-  const showViewSummary = status === "complete" && state.summary;
+  const canShowCompletedActions =
+    status === "complete" && state.summary != null && !isPendingRoundStatus(status);
+
+  const showViewSummary = canShowCompletedActions;
   const showGetVerdict =
-    status === "complete" && Boolean(state.summary) && !state.judgeVerdict && !state.judgeLoading;
-  const showGetVerdictLoading = status === "complete" && state.judgeLoading;
+    canShowCompletedActions && !state.judgeVerdict && !state.judgeLoading;
+  const showGetVerdictLoading =
+    status === "complete" && state.summary != null && state.judgeLoading;
+
+  const showSummarizingBar = status === "summarizing" && isLoading;
 
   if (
     !showPrepareModeration &&
-    !showAwaitingNext &&
+    !showAwaitingInterRound &&
     !showSummarize &&
     !showViewSummary &&
     !showGetVerdict &&
     !showGetVerdictLoading &&
+    !showSummarizingBar &&
     !isLoading
   ) {
     return null;
@@ -58,7 +72,14 @@ export default function DebateControls() {
 
   return (
     <div className="px-4 py-2 shrink-0 flex flex-col gap-3 border-t border-[#1A1A1A]">
-      {showAwaitingNext && currentRound >= 1 && (
+      {showSummarizingBar && (
+        <div className="flex items-center justify-center gap-2 py-2 text-[13px] text-[#888]">
+          <Loader2 size={16} className="animate-spin text-[#EF9F27]" />
+          Summarizing…
+        </div>
+      )}
+
+      {showAwaitingInterRound && currentRound >= 1 && (
         <div
           className="order-1 w-full shrink-0"
           style={{
@@ -78,7 +99,7 @@ export default function DebateControls() {
               marginBottom: "8px",
             }}
           >
-            Add context before Round {currentRound + 1} (optional)
+            {`Add context before Round ${pendingRound >= 1 ? pendingRound : currentRound + 1} (optional)`}
           </p>
           <textarea
             placeholder="Answer the moderator's question, add new information, or clarify your position..."
@@ -121,7 +142,7 @@ export default function DebateControls() {
             </button>
           )}
 
-          {showAwaitingNext && (
+          {showAwaitingInterRound && (
             <button
               type="button"
               onClick={() => void startRound2()}
