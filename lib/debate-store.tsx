@@ -35,7 +35,11 @@ import {
 } from "./convex-debate-mappers";
 import { clearIdleSuggestionsCache } from "./idle-suggestions";
 import { streamDebate } from "./stream";
-import { toOpenRouterModeratorModel, toOpenRouterSummarizerModel } from "./openrouter-models";
+import {
+  summarizerTypingModel,
+  toOpenRouterModeratorModel,
+  toOpenRouterSummarizerModel,
+} from "./openrouter-models";
 
 /** Shown in the clarification modal if /api/clarify fails — user must still pass through the step. */
 const FALLBACK_CLARIFYING_QUESTIONS = [
@@ -210,8 +214,17 @@ function debateReducer(state: DebateState, action: DebateAction): DebateState {
         ...state,
         status: "summarizing",
         isLoading: true,
-        loadingModel: "claude",
+        loadingModel: action.payload,
         error: null,
+      };
+
+    case "RESTORE_STATUS_AFTER_SUMMARIZE_FAIL":
+      if (state.status !== "summarizing") return state;
+      return {
+        ...state,
+        status: state.currentRound >= 2 ? "round2" : "round1",
+        isLoading: false,
+        loadingModel: null,
       };
 
     case "SET_SUMMARY":
@@ -642,10 +655,16 @@ export function DebateProvider({ children }: { children: ReactNode }) {
   }, [runModeration, runRound]);
 
   const triggerSummarize = useCallback(async () => {
-    dispatch({ type: "START_SUMMARIZING" });
-    try {
-      const s = stateRef.current;
+    const s = stateRef.current;
+    dispatch({
+      type: "START_SUMMARIZING",
+      payload: summarizerTypingModel(s.settings.summarizerModel),
+    });
+    const SUMMARIZE_CLIENT_TIMEOUT_MS = 135_000;
+    const ac = new AbortController();
+    const clientTimeout = setTimeout(() => ac.abort(), SUMMARIZE_CLIENT_TIMEOUT_MS);
 
+    try {
       const allMessages = s.messages
         .filter((m) => !m.isModerator && m.content.trim())
         .map((m) => ({ model: m.model, content: m.content, round: m.round }));
@@ -658,6 +677,7 @@ export function DebateProvider({ children }: { children: ReactNode }) {
           allMessages,
           model: toOpenRouterSummarizerModel(s.settings.summarizerModel),
         }),
+        signal: ac.signal,
       });
       if (!res.ok) throw new Error(`summarize ${res.status}`);
       const data = (await res.json()) as DebateSummary;
@@ -683,9 +703,15 @@ export function DebateProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       dispatch({
         type: "SET_ERROR",
-        payload: "Summary could not be generated. Check your connection and try again.",
+        payload:
+          err instanceof Error && err.name === "AbortError"
+            ? "Summary timed out. Try again, or switch Summarizer to Gemini in Settings."
+            : "Summary could not be generated. Check your connection and try again.",
       });
+      dispatch({ type: "RESTORE_STATUS_AFTER_SUMMARIZE_FAIL" });
       console.error(err);
+    } finally {
+      clearTimeout(clientTimeout);
     }
   }, [saveDebate]);
 

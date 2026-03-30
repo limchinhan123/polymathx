@@ -184,7 +184,8 @@ export type DebateAction =
   | { type: "START_ROUND_2" }
   | { type: "START_NEXT_ROUND"; payload: number }
   | { type: "CONTINUE_DEBATE"; payload?: { extraRounds?: number } }
-  | { type: "START_SUMMARIZING" }
+  | { type: "START_SUMMARIZING"; payload: ModelId }
+  | { type: "RESTORE_STATUS_AFTER_SUMMARIZE_FAIL" }
   | { type: "SET_SUMMARY"; payload: DebateSummary }
   | { type: "UPDATE_SETTINGS"; payload: Partial<DebateSettings> }
   | { type: "OPEN_DRAWER"; payload?: "history" | "settings" }
