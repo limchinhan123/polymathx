@@ -122,6 +122,18 @@ export interface ClarifyingQuestion {
   answer: string;
 }
 
+// ─── Attached file ────────────────────────────────────────────────────────────
+
+export interface AttachedFile {
+  name: string;
+  type: "pdf" | "docx" | "image";
+  /** Extracted text for PDF and DOCX. */
+  text?: string;
+  /** Base64-encoded data URI for images (e.g. "data:image/jpeg;base64,..."). */
+  base64?: string;
+  isImage: boolean;
+}
+
 // ─── Full debate state ────────────────────────────────────────────────────────
 
 export interface DebateState {
@@ -142,6 +154,7 @@ export interface DebateState {
   agreementScore: number | null;
   judgeVerdict: JudgeVerdict | null;
   judgeLoading: boolean;
+  attachedFile: AttachedFile | null;
 }
 
 // ─── Actions ──────────────────────────────────────────────────────────────────
@@ -180,6 +193,8 @@ export type DebateAction =
   | { type: "START_JUDGE" }
   | { type: "JUDGE_COMPLETE"; payload: JudgeVerdict }
   | { type: "JUDGE_CANCEL_LOADING" }
+  | { type: "ATTACH_FILE"; payload: AttachedFile }
+  | { type: "CLEAR_FILE" }
   | {
       type: "LOAD_SAVED_DEBATE";
       payload: {

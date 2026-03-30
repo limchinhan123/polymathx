@@ -1,8 +1,17 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback, type KeyboardEvent } from "react";
-import { Mic, Send, Loader2 } from "lucide-react";
+import {
+  useState,
+  useRef,
+  useEffect,
+  useLayoutEffect,
+  useCallback,
+  type KeyboardEvent,
+} from "react";
+import { Mic, Send, Loader2, Paperclip, X, FileText, Image as ImageIcon } from "lucide-react";
+import NextImage from "next/image";
 import { useDebate } from "@/lib/debate-store";
+import { processFile } from "@/lib/file-processor";
 
 /** Local types — Web Speech API (DOM lib may omit these in some TS configs). */
 interface WebSpeechResult {
@@ -45,17 +54,30 @@ function getSpeechRecognitionCtor(): (new () => WebSpeechRecognition) | undefine
   return w.SpeechRecognition ?? w.webkitSpeechRecognition;
 }
 
+/** Matches `text-[16px] leading-[1.6]` + `py-2.5` (10px × 2) for auto-grow cap. */
+const TEXTAREA_LINE_HEIGHT_PX = 16 * 1.6;
+const TEXTAREA_PAD_Y_PX = 20;
+const TEXTAREA_MAX_LINES = 5;
+const TEXTAREA_MAX_HEIGHT_PX =
+  TEXTAREA_PAD_Y_PX + TEXTAREA_MAX_LINES * TEXTAREA_LINE_HEIGHT_PX;
+
 export default function InputRow() {
-  const { state, startDebate } = useDebate();
+  const { state, dispatch, startDebate } = useDebate();
   const [text, setText] = useState("");
   const [isListening, setIsListening] = useState(false);
   const [voiceHint, setVoiceHint] = useState<string | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const [fileLoading, setFileLoading] = useState(false);
+  const [isSuggested, setIsSuggested] = useState(false);
 
-  const inputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<WebSpeechRecognition | null>(null);
   const baseTextRef = useRef("");
   const sessionFinalRef = useRef("");
   const voiceHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const attachedFile = state.attachedFile;
 
   const isIdle = state.status === "idle";
   const isLoading = state.isLoading;
@@ -175,14 +197,78 @@ export default function InputRow() {
     };
   }, []);
 
+  const syncTextareaHeight = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, TEXTAREA_MAX_HEIGHT_PX)}px`;
+  }, []);
+
+  useLayoutEffect(() => {
+    syncTextareaHeight();
+  }, [text, syncTextareaHeight, isIdle, isLoading, isListening, isComplete]);
+
+  const clearFile = useCallback(() => {
+    dispatch({ type: "CLEAR_FILE" });
+    setIsSuggested(false);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, [dispatch]);
+
+  const handleFileChange = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      setFileError(null);
+      setFileLoading(true);
+      try {
+        const processed = await processFile(file);
+        dispatch({ type: "ATTACH_FILE", payload: processed });
+
+        // Only suggest topic when text field is empty
+        if (!text.trim() && !processed.isImage && processed.text) {
+          try {
+            const res = await fetch("/api/suggest-topic", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                fileName: processed.name,
+                fileText: processed.text,
+              }),
+            });
+            if (res.ok) {
+              const data = (await res.json()) as { topic: string };
+              if (data.topic) {
+                setText(data.topic);
+                setIsSuggested(true);
+              }
+            }
+          } catch {
+            // Non-fatal — suggestion is optional
+          }
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Could not read file — please try again";
+        setFileError(msg);
+        setTimeout(() => setFileError(null), 3500);
+      } finally {
+        setFileLoading(false);
+        // Reset so same file can be re-selected
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }
+    },
+    [dispatch, text]
+  );
+
   const handleSend = () => {
     if (!canSend) return;
     const topic = text.trim();
     setText("");
+    setIsSuggested(false);
     startDebate(topic);
   };
 
-  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -191,14 +277,61 @@ export default function InputRow() {
 
   const micDisabled = !isIdle || isLoading;
 
+  const hasFile = !!attachedFile;
+
   return (
     <div className="px-4 py-3 pb-safe shrink-0 bg-[#0A0A0A] border-t border-[#1A1A1A]">
-      {voiceHint && (
-        <p className="text-center text-[11px] text-amber-500/90 mb-2" role="status">
-          {voiceHint}
+      {/* Status hints */}
+      {(voiceHint ?? fileError) && (
+        <p
+          className={`text-center text-[11px] mb-2 ${fileError ? "text-red-400/90" : "text-amber-500/90"}`}
+          role="status"
+        >
+          {fileError ?? voiceHint}
         </p>
       )}
-      <div className="flex items-center gap-2">
+
+      {/* File pill */}
+      {attachedFile && (
+        <div className="flex items-center gap-2 mb-2 flex-wrap">
+          <div className="flex items-center gap-1.5 bg-[#1A1A1A] border border-[#2A2A2A] rounded-full
+                          pl-2 pr-1.5 py-1 max-w-full min-w-0">
+            {attachedFile.isImage && attachedFile.base64 ? (
+              // Thumbnail for images (base64 data URI — next/image supports unoptimized data URIs)
+              <NextImage
+                src={attachedFile.base64}
+                alt=""
+                width={24}
+                height={24}
+                unoptimized
+                className="w-6 h-6 rounded-full object-cover shrink-0"
+              />
+            ) : attachedFile.isImage ? (
+              <ImageIcon size={13} className="text-[#EF9F27] shrink-0" />
+            ) : (
+              <FileText size={13} className="text-[#EF9F27] shrink-0" />
+            )}
+            <span className="text-[12px] text-[#CCC] truncate max-w-[180px] sm:max-w-[260px]">
+              {attachedFile.name.length > 30
+                ? attachedFile.name.slice(0, 27) + "…"
+                : attachedFile.name}
+            </span>
+            <button
+              type="button"
+              aria-label="Remove attachment"
+              onClick={clearFile}
+              className="ml-0.5 text-[#555] hover:text-[#CCC] transition-colors shrink-0"
+            >
+              <X size={13} />
+            </button>
+          </div>
+          {isSuggested && (
+            <span className="text-[11px] text-[#555] italic">suggested topic</span>
+          )}
+        </div>
+      )}
+
+      <div className="flex items-end gap-2">
         {/* Mic button */}
         <button
           type="button"
@@ -216,21 +349,46 @@ export default function InputRow() {
           <Mic size={18} />
         </button>
 
-        {/* Text input */}
-        <div className="flex-1 relative">
-          <input
-            ref={inputRef}
-            type="text"
+        {/* Paperclip button */}
+        <button
+          type="button"
+          aria-label="Attach file"
+          disabled={!isIdle || isLoading || fileLoading}
+          onClick={() => fileInputRef.current?.click()}
+          className={`w-10 h-10 flex items-center justify-center rounded-xl transition-colors disabled:opacity-30
+            ${hasFile ? "text-[#EF9F27]" : "text-[#444] hover:text-[#888] hover:bg-[#141414]"}`}
+        >
+          {fileLoading ? <Loader2 size={16} className="animate-spin" /> : <Paperclip size={16} />}
+        </button>
+
+        {/* Hidden file input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,.docx,.jpg,.jpeg,.png"
+          className="hidden"
+          onChange={(e) => void handleFileChange(e)}
+          aria-hidden="true"
+        />
+
+        {/* Topic / message (multi-line, Enter sends, Shift+Enter newline) */}
+        <div className="flex-1 relative min-w-0">
+          <textarea
+            ref={textareaRef}
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => { setText(e.target.value); setIsSuggested(false); }}
             onKeyDown={handleKeyDown}
             placeholder={placeholder}
             disabled={!isIdle || isLoading || isListening}
-            maxLength={300}
-            className="w-full bg-[#141414] border border-[#2A2A2A] rounded-2xl px-4 py-2.5
+            maxLength={600}
+            rows={1}
+            enterKeyHint="send"
+            className="w-full min-w-0 bg-[#141414] border border-[#2A2A2A] rounded-2xl px-4 py-2.5
                        text-[16px] leading-[1.6] text-white placeholder-[#3A3A3A] outline-none
                        focus:border-[#EF9F27]/40 focus:ring-1 focus:ring-[#EF9F27]/20
-                       disabled:opacity-40 transition-all"
+                       disabled:opacity-40 transition-all
+                       resize-none overflow-y-auto"
+            style={{ maxHeight: TEXTAREA_MAX_HEIGHT_PX }}
           />
         </div>
 

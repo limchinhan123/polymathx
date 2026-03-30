@@ -89,6 +89,14 @@ interface PreviousResponses {
   grok?: string;
 }
 
+interface AttachedFilePayload {
+  name: string;
+  type: "pdf" | "docx" | "image";
+  text?: string;
+  base64?: string;
+  isImage: boolean;
+}
+
 interface DebateRequestBody {
   topic?: string;
   /** Current debater round (1-indexed). */
@@ -98,9 +106,20 @@ interface DebateRequestBody {
   previousResponses?: PreviousResponses;
   round1ByModel?: Round1ByModel;
   moderatorQuestion?: string;
+  attachedFile?: AttachedFilePayload;
 }
 
-type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
+type ChatMessageContent =
+  | string
+  | Array<
+      | { type: "text"; text: string }
+      | { type: "image_url"; image_url: { url: string } }
+    >;
+
+type ChatMessage = {
+  role: "system" | "user" | "assistant";
+  content: ChatMessageContent;
+};
 
 // ── OpenAI client (lazy) ────────────────────────────────────────────────────
 
@@ -122,6 +141,10 @@ async function streamFromOpenRouter(
   temperature: number,
   onChunk: (text: string) => void
 ): Promise<void> {
+  const serializedMessages = messages.map((m) => ({
+    role: m.role,
+    content: m.content,
+  }));
   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -130,7 +153,7 @@ async function streamFromOpenRouter(
       "HTTP-Referer": openRouterReferer(),
       "X-Title": "Polymath X",
     },
-    body: JSON.stringify({ model, messages, temperature, max_tokens: 400, stream: true }),
+    body: JSON.stringify({ model, messages: serializedMessages, temperature, max_tokens: 400, stream: true }),
   });
 
   if (!response.ok || !response.body) {
@@ -169,7 +192,8 @@ async function streamFromOpenAI(
 ): Promise<void> {
   const stream = await getOpenAI().chat.completions.create({
     model,
-    messages,
+    /* eslint-disable-next-line */
+    messages: messages as any,
     temperature,
     max_tokens: 400,
     stream: true,
@@ -193,6 +217,49 @@ ${quoted}
 You must maintain intellectual consistency with this position. Before engaging with other models, restate your core position in one sentence. Only change your position if you explicitly acknowledge the change and state the exact reason why.
 
 `;
+}
+
+// ── File context injection ───────────────────────────────────────────────────
+
+/**
+ * For text-based files (PDF/DOCX): appends the extracted text to the user message string.
+ * For images: replaces the user message content with an array containing the image + text.
+ * Only applied to Round 1 (subsequent rounds already have context in the thread).
+ */
+function injectFileContext(
+  messages: ChatMessage[],
+  file: AttachedFilePayload | undefined,
+  supportsVision: boolean
+): ChatMessage[] {
+  if (!file) return messages;
+
+  return messages.map((msg, idx) => {
+    // Only touch the last user message
+    if (msg.role !== "user" || idx !== messages.length - 1) return msg;
+
+    if (file.isImage && file.base64 && supportsVision) {
+      return {
+        role: "user" as const,
+        content: [
+          { type: "image_url" as const, image_url: { url: file.base64 } },
+          {
+            type: "text" as const,
+            text: String(msg.content),
+          },
+        ],
+      };
+    }
+
+    if (!file.isImage && file.text) {
+      const suffix = `\n\nATTACHED DOCUMENT — '${file.name}':\n${file.text}\n\nThe human wants you to use this document as context for the debate.\nIf the topic is about the document itself, debate its content directly.\nIf the topic is a separate question, use the document as background context.`;
+      return {
+        ...msg,
+        content: String(msg.content) + suffix,
+      };
+    }
+
+    return msg;
+  });
 }
 
 // ── Prompt builders ─────────────────────────────────────────────────────────
@@ -361,7 +428,9 @@ export async function POST(req: NextRequest): Promise<Response> {
     previousResponses = {},
     round1ByModel = {},
     moderatorQuestion = "",
+    attachedFile,
   } = body;
+  const isRound1File = debateRound <= 1 && !!attachedFile;
 
   const temperature = settings.temperature ?? 0.7;
   const debateStyle = settings.debateStyle ?? "Socratic";
@@ -383,57 +452,74 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   const isRound1 = debateRound <= 1;
 
-  const claudeMessages = isRound1
-    ? round1Prompts("Claude", claudePersonaDef, styleDef, topic, clarifications)
-    : roundNPrompts(
-        "Claude",
-        claudePersonaDef,
-        styleDef,
-        topic,
-        previousResponses,
-        moderatorQuestion,
-        debateRound,
-        round1ByModel.claude
-      );
-
-  const gptMessages = isRound1
-    ? round1Prompts("GPT-4o", gptPersonaDef, styleDef, topic, clarifications)
-    : roundNPrompts(
-        "GPT-4o",
-        gptPersonaDef,
-        styleDef,
-        topic,
-        previousResponses,
-        moderatorQuestion,
-        debateRound,
-        round1ByModel.gpt
-      );
-
-  const geminiMessages = isRound1
-    ? round1Prompts("Gemini", geminiPersonaDef, styleDef, topic, clarifications)
-    : roundNPrompts(
-        "Gemini",
-        geminiPersonaDef,
-        styleDef,
-        topic,
-        previousResponses,
-        moderatorQuestion,
-        debateRound,
-        round1ByModel.gemini
-      );
-
-  const grokMessages =
-    blackHatMode &&
-    (isRound1
-      ? grokRound1Messages(topic, clarifications)
-      : grokRoundNMessages(
+  const claudeMessages = injectFileContext(
+    isRound1
+      ? round1Prompts("Claude", claudePersonaDef, styleDef, topic, clarifications)
+      : roundNPrompts(
+          "Claude",
+          claudePersonaDef,
+          styleDef,
           topic,
-          clarifications,
           previousResponses,
           moderatorQuestion,
           debateRound,
-          round1ByModel.grok
-        ));
+          round1ByModel.claude
+        ),
+    isRound1File ? attachedFile : undefined,
+    true // Claude supports vision
+  );
+
+  const gptMessages = injectFileContext(
+    isRound1
+      ? round1Prompts("GPT-4o", gptPersonaDef, styleDef, topic, clarifications)
+      : roundNPrompts(
+          "GPT-4o",
+          gptPersonaDef,
+          styleDef,
+          topic,
+          previousResponses,
+          moderatorQuestion,
+          debateRound,
+          round1ByModel.gpt
+        ),
+    isRound1File ? attachedFile : undefined,
+    true // GPT-4o supports vision
+  );
+
+  const geminiMessages = injectFileContext(
+    isRound1
+      ? round1Prompts("Gemini", geminiPersonaDef, styleDef, topic, clarifications)
+      : roundNPrompts(
+          "Gemini",
+          geminiPersonaDef,
+          styleDef,
+          topic,
+          previousResponses,
+          moderatorQuestion,
+          debateRound,
+          round1ByModel.gemini
+        ),
+    isRound1File ? attachedFile : undefined,
+    true // Gemini Pro 1.5 supports vision
+  );
+
+  // Grok and future non-vision models: images are skipped, text docs still injected
+  const grokMessages =
+    blackHatMode &&
+    injectFileContext(
+      isRound1
+        ? grokRound1Messages(topic, clarifications)
+        : grokRoundNMessages(
+            topic,
+            clarifications,
+            previousResponses,
+            moderatorQuestion,
+            debateRound,
+            round1ByModel.grok
+          ),
+      isRound1File ? attachedFile : undefined,
+      false // Grok: inject text docs but skip images
+    );
 
   const encoder = new TextEncoder();
 

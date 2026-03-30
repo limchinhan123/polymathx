@@ -20,6 +20,7 @@ import {
   type ClarifyingQuestion,
   type ModelId,
   type JudgeVerdict,
+  type AttachedFile,
   DEFAULT_SETTINGS,
 } from "./types";
 import { getOrCreateDeviceId } from "./device-id";
@@ -55,6 +56,7 @@ const initialState: DebateState = {
   agreementScore: null,
   judgeVerdict: null,
   judgeLoading: false,
+  attachedFile: null,
 };
 
 // ─── Reducer ──────────────────────────────────────────────────────────────────
@@ -264,6 +266,7 @@ function debateReducer(state: DebateState, action: DebateAction): DebateState {
       return {
         ...initialState,
         settings: state.settings,
+        attachedFile: null,
       };
 
     case "START_JUDGE":
@@ -274,6 +277,12 @@ function debateReducer(state: DebateState, action: DebateAction): DebateState {
 
     case "JUDGE_CANCEL_LOADING":
       return { ...state, judgeLoading: false };
+
+    case "ATTACH_FILE":
+      return { ...state, attachedFile: action.payload };
+
+    case "CLEAR_FILE":
+      return { ...state, attachedFile: null };
 
     case "LOAD_SAVED_DEBATE": {
       const p = action.payload;
@@ -482,6 +491,7 @@ export function DebateProvider({ children }: { children: ReactNode }) {
         ...(previousResponses ? { previousResponses } : {}),
         ...(round1ByModel ? { round1ByModel } : {}),
         ...(moderatorQuestion ? { moderatorQuestion } : {}),
+        ...(s.attachedFile ? { attachedFile: s.attachedFile } : {}),
       };
 
       await streamDebate(
