@@ -380,7 +380,7 @@ export default function InputRow() {
             onKeyDown={handleKeyDown}
             placeholder={placeholder}
             disabled={!isIdle || isLoading || isListening}
-            maxLength={600}
+            maxLength={2000}
             rows={1}
             enterKeyHint="send"
             className="w-full min-w-0 bg-[#141414] border border-[#2A2A2A] rounded-2xl px-4 py-2.5
