@@ -10,7 +10,7 @@ interface SummarizeRequestBody {
   model?: string;
 }
 
-const GEMINI_SUMMARIZER = "google/gemini-pro-1.5";
+const GEMINI_SUMMARIZER = "google/gemini-2.0-flash-001";
 
 const SAFE_DEFAULT: DebateSummary = {
   generatedBy: "gemini",
@@ -27,7 +27,7 @@ export async function POST(
   req: NextRequest
 ): Promise<NextResponse<DebateSummary>> {
   const body = (await req.json()) as SummarizeRequestBody;
-  const { topic = "", allMessages = [] } = body;
+  const { topic = "", allMessages = [], model = GEMINI_SUMMARIZER } = body;
 
   const systemPrompt = `You are synthesizing a structured multi-model AI debate into a decision-quality summary.
 
@@ -70,7 +70,7 @@ Produce the summary now.`;
         "X-Title": "Polymath X",
       },
       body: JSON.stringify({
-        model: GEMINI_SUMMARIZER,
+        model,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },

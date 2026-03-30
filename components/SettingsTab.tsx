@@ -83,7 +83,7 @@ export default function SettingsTab() {
           color="#8B7CF6"
           value={settings.summarizerModel}
           options={[
-            { value: "google/gemini-pro-1.5", label: "Gemini Pro 1.5" },
+            { value: "google/gemini-2.0-flash-001", label: "Gemini 2.0 Flash" },
             { value: "claude-3-5-sonnet-20241022", label: "Claude Sonnet" },
             { value: "claude-3-haiku-20240307", label: "Claude Haiku" },
           ]}
