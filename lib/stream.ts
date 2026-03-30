@@ -30,6 +30,13 @@ export interface DebatePayload {
     grok?: string;
   };
   moderatorQuestion?: string;
+  attachedFile?: {
+    name: string;
+    type: "pdf" | "docx" | "image";
+    text?: string;
+    base64?: string;
+    isImage: boolean;
+  };
 }
 
 export async function streamDebate(
