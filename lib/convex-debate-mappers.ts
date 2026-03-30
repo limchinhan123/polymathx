@@ -2,10 +2,12 @@ import type { Doc } from "@/convex/_generated/dataModel";
 import type { DebateSettings, DebateSummary, Message, ModelId } from "./types";
 import { DEFAULT_SETTINGS } from "./types";
 
-const MODEL_IDS: ModelId[] = ["claude", "gpt4o", "gemini", "deepseek", "grok"];
+const MODEL_IDS: ModelId[] = ["claude", "gpt4o", "gemini", "deepseek", "blackHat"];
 
+/** Persisted debates may still store the old id `grok`. */
 function asModelId(raw: string): ModelId {
-  return MODEL_IDS.includes(raw as ModelId) ? (raw as ModelId) : "claude";
+  const normalized = raw === "grok" ? "blackHat" : raw;
+  return MODEL_IDS.includes(normalized as ModelId) ? (normalized as ModelId) : "claude";
 }
 
 /** Convex `settings` document shape (see convex/schema.ts). */
@@ -45,17 +47,21 @@ export function summaryToConvexString(summary: DebateSummary): string {
 }
 
 export function mapMessagesFromConvex(messages: Doc<"debates">["messages"]): Message[] {
-  return messages.map((m) => ({
-    id: m.id,
-    model: asModelId(m.model),
-    role: m.isModerator ? "moderator" : "model",
-    personaTag: m.personaTag,
-    content: m.content,
-    round: m.round,
-    timestamp: Number.parseInt(m.timestamp, 10) || 0,
-    isModerator: m.isModerator,
-    isStreaming: false,
-  }));
+  return messages.map((m) => {
+    const model = asModelId(m.model);
+    return {
+      id: m.id,
+      model,
+      role: m.isModerator ? "moderator" : "model",
+      personaTag: m.personaTag,
+      content: m.content,
+      round: m.round,
+      timestamp: Number.parseInt(m.timestamp, 10) || 0,
+      isModerator: m.isModerator,
+      isStreaming: false,
+      ...(model === "blackHat" ? { blackHat: true } : {}),
+    };
+  });
 }
 
 export function mapSettingsFromConvex(s: Doc<"debates">["settings"]): DebateSettings {
@@ -75,6 +81,11 @@ export function mapSettingsFromConvex(s: Doc<"debates">["settings"]): DebateSett
   };
 }
 
+function normalizeSummaryGeneratedBy(raw: string): ModelId {
+  const normalized = raw === "grok" ? "blackHat" : raw;
+  return MODEL_IDS.includes(normalized as ModelId) ? (normalized as ModelId) : "gemini";
+}
+
 export function summaryFromConvexString(raw: string | undefined): DebateSummary | null {
   if (!raw?.trim()) return null;
   try {
@@ -85,7 +96,7 @@ export function summaryFromConvexString(raw: string | undefined): DebateSummary 
       typeof o.coreTension === "string" &&
       typeof o.generatedBy === "string"
     ) {
-      return o;
+      return { ...o, generatedBy: normalizeSummaryGeneratedBy(o.generatedBy) };
     }
   } catch {
     /* ignore */

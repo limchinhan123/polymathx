@@ -1,13 +1,13 @@
 // ─── Model identifiers ────────────────────────────────────────────────────────
 
-export type ModelId = "claude" | "gpt4o" | "gemini" | "deepseek" | "grok";
+export type ModelId = "claude" | "gpt4o" | "gemini" | "deepseek" | "blackHat";
 
 export const MODEL_LABELS: Record<ModelId, string> = {
   claude: "Claude",
   gpt4o: "GPT-4o",
   gemini: "Gemini",
   deepseek: "DeepSeek",
-  grok: "Grok",
+  blackHat: "DeepSeek R1",
 };
 
 export const MODEL_COLORS: Record<ModelId, string> = {
@@ -15,7 +15,7 @@ export const MODEL_COLORS: Record<ModelId, string> = {
   gpt4o: "#10A37F",
   gemini: "#4285F4",
   deepseek: "#EF9F27",
-  grok: "#FF6B6B",
+  blackHat: "#06B6D4",
 };
 
 // ─── Debate state machine ─────────────────────────────────────────────────────
@@ -52,7 +52,7 @@ export interface DebateSettings {
   summarizerModel: SummarizerModel;
   temperature: number;
   debateStyle: DebateStyle;
-  /** When true, Grok joins as a 4th debater in a fixed Black Hat role. */
+  /** When true, DeepSeek R1 joins as a 4th debater in a fixed Black Hat role. */
   blackHatMode: boolean;
   claudePersona: ClaudePersona;
   gptPersona: GptPersona;
@@ -89,7 +89,7 @@ export interface Message {
   isStreaming?: boolean;
   agreementScore?: number;
   nextQuestion?: string;
-  /** Grok in Black Hat mode — show hat badge. */
+  /** Black Hat debater — show hat badge in the UI. */
   blackHat?: boolean;
 }
 

@@ -10,7 +10,7 @@ interface ModerateRequestBody {
     claude?: string;
     gpt?: string;
     gemini?: string;
-    grok?: string;
+    blackHat?: string;
   };
 }
 
@@ -60,8 +60,8 @@ FORMAT RULES for the string fields "tension" and "nextQuestion" — follow stric
 Claude said: ${responses.claude ?? ""}
 GPT-4o said: ${responses.gpt ?? ""}
 Gemini said: ${responses.gemini ?? ""}`;
-  if (responses.grok !== undefined && responses.grok !== "") {
-    userPrompt += `\nGrok said: ${responses.grok}`;
+  if (responses.blackHat !== undefined && responses.blackHat !== "") {
+    userPrompt += `\nBlack Hat (DeepSeek R1) said: ${responses.blackHat}`;
   }
   userPrompt += `\n\nIdentify the tension, score agreement, and pose the next question.`;
 

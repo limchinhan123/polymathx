@@ -400,7 +400,7 @@ export function DebateProvider({ children }: { children: ReactNode }) {
       const claudeId = makeId();
       const gpt4oId = makeId();
       const geminiId = makeId();
-      const grokId = bh ? makeId() : null;
+      const blackHatId = bh ? makeId() : null;
 
       const placeholders: Message[] = [
         {
@@ -436,11 +436,11 @@ export function DebateProvider({ children }: { children: ReactNode }) {
           isModerator: false,
           isStreaming: true,
         },
-        ...(bh && grokId
+        ...(bh && blackHatId
           ? [
               {
-                id: grokId,
-                model: "grok" as const,
+                id: blackHatId,
+                model: "blackHat" as const,
                 role: "model" as const,
                 personaTag: "Black Hat",
                 content: "",
@@ -461,7 +461,7 @@ export function DebateProvider({ children }: { children: ReactNode }) {
         claude: claudeId,
         gpt4o: gpt4oId,
         gemini: geminiId,
-        ...(grokId ? { grok: grokId } : {}),
+        ...(blackHatId ? { blackHat: blackHatId } : {}),
       };
 
       const prevMessages = s.messages.filter((m) => m.round === round - 1 && !m.isModerator);
@@ -474,7 +474,7 @@ export function DebateProvider({ children }: { children: ReactNode }) {
               gpt: prevMessages.find((m) => m.model === "gpt4o")?.content ?? "",
               gemini: prevMessages.find((m) => m.model === "gemini")?.content ?? "",
               ...(bh
-                ? { grok: prevMessages.find((m) => m.model === "grok")?.content ?? "" }
+                ? { blackHat: prevMessages.find((m) => m.model === "blackHat")?.content ?? "" }
                 : {}),
             }
           : undefined;
@@ -486,7 +486,7 @@ export function DebateProvider({ children }: { children: ReactNode }) {
               gpt: round1Messages.find((m) => m.model === "gpt4o")?.content ?? "",
               gemini: round1Messages.find((m) => m.model === "gemini")?.content ?? "",
               ...(bh
-                ? { grok: round1Messages.find((m) => m.model === "grok")?.content ?? "" }
+                ? { blackHat: round1Messages.find((m) => m.model === "blackHat")?.content ?? "" }
                 : {}),
             }
           : undefined;
@@ -511,7 +511,9 @@ export function DebateProvider({ children }: { children: ReactNode }) {
           },
         },
         ...(previousResponses ? { previousResponses } : {}),
-        ...(round1ByModel ? { round1ByModel } : {}),
+        ...(round1ByModel
+          ? { round1ByModel, ownPreviousResponse: { ...round1ByModel } }
+          : {}),
         ...(moderatorQuestion ? { moderatorQuestion } : {}),
         ...(s.attachedFile ? { attachedFile: s.attachedFile } : {}),
       };
@@ -570,7 +572,7 @@ export function DebateProvider({ children }: { children: ReactNode }) {
             gpt: roundMsgs.find((m) => m.model === "gpt4o")?.content ?? "",
             gemini: roundMsgs.find((m) => m.model === "gemini")?.content ?? "",
             ...(s.settings.blackHatMode
-              ? { grok: roundMsgs.find((m) => m.model === "grok")?.content ?? "" }
+              ? { blackHat: roundMsgs.find((m) => m.model === "blackHat")?.content ?? "" }
               : {}),
           },
         }),
@@ -786,7 +788,7 @@ export function getModelColor(model: ModelId): string {
     gpt4o: "#10A37F",
     gemini: "#4285F4",
     deepseek: "#EF9F27",
-    grok: "#06B6D4",
+    blackHat: "#06B6D4",
   };
   return colors[model];
 }
@@ -797,7 +799,7 @@ export function getModelInitial(model: ModelId): string {
     gpt4o: "G",
     gemini: "Gm",
     deepseek: "DS",
-    grok: "R1",
+    blackHat: "R1",
   };
   return initials[model];
 }

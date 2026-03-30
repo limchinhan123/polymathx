@@ -50,7 +50,7 @@ export default function Header() {
                     ? "Claude"
                     : state.loadingModel === "gemini"
                       ? "Gemini"
-                      : state.loadingModel === "grok"
+                      : state.loadingModel === "blackHat"
                         ? "DeepSeek R1"
                         : state.loadingModel}
               </span>

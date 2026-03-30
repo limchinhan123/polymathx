@@ -20,14 +20,21 @@ export interface DebatePayload {
     claude: string;
     gpt: string;
     gemini: string;
-    grok?: string;
+    blackHat?: string;
   };
   /** Each model's round-1 output — server uses for position anchoring in round 2+. */
   round1ByModel?: {
     claude?: string;
     gpt?: string;
     gemini?: string;
-    grok?: string;
+    blackHat?: string;
+  };
+  /** Same data as round1ByModel; explicit name for position anchoring (merged on server). */
+  ownPreviousResponse?: {
+    claude?: string;
+    gpt?: string;
+    gemini?: string;
+    blackHat?: string;
   };
   moderatorQuestion?: string;
   attachedFile?: {
@@ -60,7 +67,7 @@ export async function streamDebate(
     claude: "",
     gpt4o: "",
     gemini: "",
-    grok: "",
+    blackHat: "",
   };
 
   while (true) {

@@ -11,7 +11,7 @@ import TypingIndicator from "./TypingIndicator";
 import JudgeVerdict from "./JudgeVerdict";
 import { type Message } from "@/lib/types";
 
-const DEBATER_ORDER = ["claude", "gpt4o", "gemini", "grok"] as const;
+const DEBATER_ORDER = ["claude", "gpt4o", "gemini", "blackHat"] as const;
 
 function sortDebaters(msgs: Message[]): Message[] {
   return [...msgs].sort(

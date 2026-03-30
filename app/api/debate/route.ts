@@ -36,7 +36,9 @@ const GEMINI_PERSONAS: Record<string, string> = {
     "Map the interconnections. What are the feedback loops and unintended consequences?",
 };
 
-const FORMAT_RULES = `FORMAT RULES — follow strictly:
+const FORMAT_RULES = `CRITICAL FORMAT RULE: Do not use any markdown formatting whatsoever. No asterisks, no bold, no italic, no bullet points, no numbered lists, no headers. Plain prose paragraphs only. Any asterisk character is strictly forbidden.
+
+FORMAT RULES — follow strictly:
 - Write in flowing paragraphs only
 - No bullet points, numbered lists, or headers
 - No bold or italic markdown formatting
@@ -46,11 +48,13 @@ const FORMAT_RULES = `FORMAT RULES — follow strictly:
 
 const NO_QUESTIONS_TO_HUMAN = `Do not ask the human any questions. You are debating with other AI models, not interviewing the human. If you need context, state your assumption explicitly instead. Example: 'Assuming this is for a B2C product...' then proceed.`;
 
+const DEBATE_DIRECTED_AT_MODELS = `You are debating OTHER AI MODELS, not the human. Direct your arguments at Claude, GPT-4o, or Gemini by name. The human is observing, not participating.`;
+
 const MODEL_OUTPUT_CONSTRAINTS = `${FORMAT_RULES}
 
 ${NO_QUESTIONS_TO_HUMAN}`;
 
-const GROK_BLACK_HAT_SYSTEM = `You are the Black Hat debater. Your job is to:
+const BLACK_HAT_DEBATER_SYSTEM = `You are the Black Hat debater. Your job is to:
 1. Actively argue against the prevailing view
 2. Find every reason why the proposed idea will fail
 3. Identify risks, blind spots, and worst-case scenarios the other models are ignoring
@@ -58,6 +62,8 @@ const GROK_BLACK_HAT_SYSTEM = `You are the Black Hat debater. Your job is to:
 5. Steel-man the opposing view only to then demolish it
 Do not be balanced. Stress-test ruthlessly.
 150-200 words. Be direct.
+
+${DEBATE_DIRECTED_AT_MODELS}
 
 ${MODEL_OUTPUT_CONSTRAINTS}`;
 
@@ -73,9 +79,16 @@ const DEBATE_STYLES: Record<string, string> = {
 };
 
 const CLAUDE_MODEL_MAP: Record<string, string> = {
-  "claude-3-5-sonnet-20241022": "anthropic/claude-sonnet-4.5",
+  "claude-3-5-sonnet-20241022": "anthropic/claude-sonnet-4.6",
   "claude-3-haiku-20240307": "anthropic/claude-haiku-4.5",
 };
+
+/** Sonnet debater: try in order until one succeeds (Haiku uses a single model only). */
+const CLAUDE_SONNET_FALLBACKS = [
+  "anthropic/claude-sonnet-4.6",
+  "anthropic/claude-sonnet-4.5",
+  "anthropic/claude-3.5-sonnet",
+] as const;
 
 const BLACK_HAT_MODEL = "deepseek/deepseek-r1";
 
@@ -95,14 +108,14 @@ interface Round1ByModel {
   claude?: string;
   gpt?: string;
   gemini?: string;
-  grok?: string;
+  blackHat?: string;
 }
 
 interface PreviousResponses {
   claude?: string;
   gpt?: string;
   gemini?: string;
-  grok?: string;
+  blackHat?: string;
 }
 
 interface AttachedFilePayload {
@@ -121,6 +134,8 @@ interface DebateRequestBody {
   settings?: DebateSettings;
   previousResponses?: PreviousResponses;
   round1ByModel?: Round1ByModel;
+  /** Each model's round-1 text for position anchoring in round 2+ (merged over round1ByModel when both sent). */
+  ownPreviousResponse?: Round1ByModel;
   moderatorQuestion?: string;
   attachedFile?: AttachedFilePayload;
 }
@@ -148,6 +163,22 @@ function getOpenAI(): OpenAI {
 }
 
 
+// ── Post-process streamed text (models still emit markdown sometimes) ───────
+
+/** Same transforms as stripMarkdown but no `.trim()` — safe between SSE chunks so words are not glued. */
+function stripMarkdownChunk(text: string): string {
+  return text
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/\*(.*?)\*/g, "$1")
+    .replace(/#{1,6}\s/g, "")
+    .replace(/^\s*[-•]\s/gm, "")
+    .replace(/^\s*\d+\.\s/gm, "");
+}
+
+function stripMarkdown(text: string): string {
+  return stripMarkdownChunk(text).trim();
+}
+
 // ── Streaming helpers ───────────────────────────────────────────────────────
 
 async function streamFromOpenRouter(
@@ -172,7 +203,12 @@ async function streamFromOpenRouter(
   });
 
   if (!response.ok || !response.body) {
-    throw new Error(`OpenRouter ${response.status}: ${await response.text()}`);
+    const errBody = await response.text();
+    console.error(
+      "[debate] OpenRouter error response",
+      JSON.stringify({ model, status: response.status, body: errBody })
+    );
+    throw new Error(`OpenRouter ${response.status}: ${errBody}`);
   }
 
   const reader = response.body.getReader();
@@ -191,7 +227,7 @@ async function streamFromOpenRouter(
           choices: Array<{ delta?: { content?: string } }>;
         };
         const text = json.choices[0]?.delta?.content ?? "";
-        if (text) onChunk(text);
+        if (text) onChunk(stripMarkdownChunk(text));
       } catch {
         /* skip */
       }
@@ -216,8 +252,29 @@ async function streamFromOpenAI(
 
   for await (const chunk of stream) {
     const text = chunk.choices[0]?.delta?.content ?? "";
-    if (text) onChunk(text);
+    if (text) onChunk(stripMarkdownChunk(text));
   }
+}
+
+async function streamClaudeDebate(
+  resolvedClaudeModel: string,
+  messages: ChatMessage[],
+  temperature: number,
+  onChunk: (text: string) => void
+): Promise<void> {
+  const isHaiku = resolvedClaudeModel.toLowerCase().includes("haiku");
+  const models: string[] = isHaiku ? [resolvedClaudeModel] : [...CLAUDE_SONNET_FALLBACKS];
+  let lastErr: unknown;
+  for (const model of models) {
+    try {
+      await streamFromOpenRouter(model, messages, temperature, onChunk);
+      return;
+    } catch (err) {
+      lastErr = err;
+      console.error(`[debate] Claude OpenRouter model failed (${model}), trying fallback if any`, err);
+    }
+  }
+  throw lastErr;
 }
 
 // ── Position anchor (round 2+) ──────────────────────────────────────────────
@@ -225,11 +282,12 @@ async function streamFromOpenAI(
 function positionAnchorBlock(ownRound1: string | undefined): string {
   const t = ownRound1?.trim() ?? "";
   if (!t) return "";
-  const quoted = JSON.stringify(t);
-  return `IMPORTANT — Your position from round 1 was:
-${quoted}
+  return `YOUR POSITION FROM ROUND 1:
+${JSON.stringify(t)}
 
-You must maintain intellectual consistency with this position. Before engaging with other models, restate your core position in one sentence. Only change your position if you explicitly acknowledge the change and state the exact reason why.
+You must maintain consistency with this position. Begin your response by restating your core argument in one sentence. Only change your position if you explicitly state: 'I am updating my position because...' followed by the specific reason.
+
+Do not contradict what you said in round 1 without acknowledgment. You are the same debater continuing an argument, not starting fresh.
 
 `;
 }
@@ -314,6 +372,8 @@ DEBATE RULES — follow these strictly:
 
 Respond in 150-200 words. Be direct.
 
+${DEBATE_DIRECTED_AT_MODELS}
+
 ${MODEL_OUTPUT_CONSTRAINTS}`,
     },
     {
@@ -325,10 +385,10 @@ Give your assessment now.`,
   ];
 }
 
-function grokRound1Messages(topic: string, clarifications: string[]): ChatMessage[] {
+function blackHatRound1Messages(topic: string, clarifications: string[]): ChatMessage[] {
   const ctx = humanContextPrefix(clarifications);
   return [
-    { role: "system", content: GROK_BLACK_HAT_SYSTEM },
+    { role: "system", content: BLACK_HAT_DEBATER_SYSTEM },
     {
       role: "user",
       content: `${ctx}Topic: ${topic}
@@ -358,8 +418,8 @@ function roundNPrompts(
 Claude: ${previousResponses.claude ?? ""}
 GPT-4o: ${previousResponses.gpt ?? ""}
 Gemini: ${previousResponses.gemini ?? ""}`;
-  if (previousResponses.grok !== undefined && previousResponses.grok !== "") {
-    body += `\nGrok: ${previousResponses.grok}`;
+  if (previousResponses.blackHat !== undefined && previousResponses.blackHat !== "") {
+    body += `\nBlack Hat (DeepSeek R1): ${previousResponses.blackHat}`;
   }
 
   const anchor = positionAnchorBlock(ownRound1);
@@ -367,7 +427,9 @@ Gemini: ${previousResponses.gemini ?? ""}`;
   return [
     {
       role: "system",
-      content: `${anchor}You are ${modelName} in round ${debateRound} of a structured debate. Your perspective lens: ${personaDef}
+      content: `${anchor}${DEBATE_DIRECTED_AT_MODELS}
+
+You are ${modelName} in round ${debateRound} of a structured debate. Your perspective lens: ${personaDef}
 Debate style: ${styleDef}
 
 You have read the previous round responses below.
@@ -399,7 +461,7 @@ Give your round ${debateRound} response now.`,
   ];
 }
 
-function grokRoundNMessages(
+function blackHatRoundNMessages(
   topic: string,
   clarifications: string[],
   previousResponses: PreviousResponses,
@@ -417,14 +479,14 @@ function grokRoundNMessages(
 Claude: ${previousResponses.claude ?? ""}
 GPT-4o: ${previousResponses.gpt ?? ""}
 Gemini: ${previousResponses.gemini ?? ""}`;
-  if (previousResponses.grok !== undefined && previousResponses.grok !== "") {
-    body += `\nGrok: ${previousResponses.grok}`;
+  if (previousResponses.blackHat !== undefined && previousResponses.blackHat !== "") {
+    body += `\nBlack Hat (DeepSeek R1): ${previousResponses.blackHat}`;
   }
 
   const anchor = positionAnchorBlock(ownRound1);
 
   return [
-    { role: "system", content: `${anchor}${GROK_BLACK_HAT_SYSTEM}` },
+    { role: "system", content: `${anchor}${BLACK_HAT_DEBATER_SYSTEM}` },
     {
       role: "user",
       content: `Topic: ${topic}
@@ -450,9 +512,12 @@ export async function POST(req: NextRequest): Promise<Response> {
     settings = {},
     previousResponses = {},
     round1ByModel = {},
+    ownPreviousResponse,
     moderatorQuestion = "",
     attachedFile,
   } = body;
+  /** Position anchor source: explicit ownPreviousResponse wins per-field over round1ByModel. */
+  const anchorByModel: Round1ByModel = { ...round1ByModel, ...(ownPreviousResponse ?? {}) };
   const isRound1File = debateRound <= 1 && !!attachedFile;
 
   const temperature = settings.temperature ?? 0.7;
@@ -468,7 +533,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   const gptPersonaDef = GPT_PERSONAS[gptPersona] ?? gptPersona;
   const geminiPersonaDef = GEMINI_PERSONAS[geminiPersona] ?? geminiPersona;
 
-  let claudeModel = settings.claudeModel ?? "anthropic/claude-sonnet-4.5";
+  let claudeModel = settings.claudeModel ?? "anthropic/claude-sonnet-4.6";
   if (CLAUDE_MODEL_MAP[claudeModel]) claudeModel = CLAUDE_MODEL_MAP[claudeModel];
   const gptModel = settings.gptModel ?? "gpt-4o";
   const geminiModel = settings.geminiModel ?? "google/gemini-2.0-flash-001";
@@ -486,7 +551,7 @@ export async function POST(req: NextRequest): Promise<Response> {
           previousResponses,
           moderatorQuestion,
           debateRound,
-          round1ByModel.claude
+          anchorByModel.claude
         ),
     isRound1File ? attachedFile : undefined,
     true // Claude supports vision
@@ -503,7 +568,7 @@ export async function POST(req: NextRequest): Promise<Response> {
           previousResponses,
           moderatorQuestion,
           debateRound,
-          round1ByModel.gpt
+          anchorByModel.gpt
         ),
     isRound1File ? attachedFile : undefined,
     true // GPT-4o supports vision
@@ -520,28 +585,28 @@ export async function POST(req: NextRequest): Promise<Response> {
           previousResponses,
           moderatorQuestion,
           debateRound,
-          round1ByModel.gemini
+          anchorByModel.gemini
         ),
     isRound1File ? attachedFile : undefined,
     true // Gemini Pro 1.5 supports vision
   );
 
-  // Grok and future non-vision models: images are skipped, text docs still injected
-  const grokMessages =
+  // Black Hat (non-vision): images are skipped, text docs still injected
+  const blackHatMessages =
     blackHatMode &&
     injectFileContext(
       isRound1
-        ? grokRound1Messages(topic, clarifications)
-        : grokRoundNMessages(
+        ? blackHatRound1Messages(topic, clarifications)
+        : blackHatRoundNMessages(
             topic,
             clarifications,
             previousResponses,
             moderatorQuestion,
             debateRound,
-            round1ByModel.grok
+            anchorByModel.blackHat
           ),
       isRound1File ? attachedFile : undefined,
-      false // Grok: inject text docs but skip images
+      false // Black Hat: inject text docs but skip images
     );
 
   const encoder = new TextEncoder();
@@ -559,12 +624,12 @@ export async function POST(req: NextRequest): Promise<Response> {
       const tasks: Promise<void>[] = [
         (async () => {
           try {
-            await streamFromOpenRouter(claudeModel, claudeMessages, temperature, (chunk) =>
+            await streamClaudeDebate(claudeModel, claudeMessages, temperature, (chunk) =>
               send("claude", chunk, false)
             );
             send("claude", "", true);
           } catch (err) {
-            console.error("[debate] claude error:", err);
+            console.error("[debate] claude error (all fallbacks exhausted):", err);
             send("claude", "[Model unavailable — continuing with other models]", false);
             send("claude", "", true);
           }
@@ -595,20 +660,20 @@ export async function POST(req: NextRequest): Promise<Response> {
         })(),
       ];
 
-      if (blackHatMode && grokMessages) {
+      if (blackHatMode && blackHatMessages) {
         tasks.push(
           (async () => {
             try {
-              await streamFromOpenRouter(BLACK_HAT_MODEL, grokMessages, temperature, (chunk) => {
-                // DeepSeek R1 emits <think>…</think> reasoning tokens — strip them
+              await streamFromOpenRouter(BLACK_HAT_MODEL, blackHatMessages, temperature, (chunk) => {
+                // DeepSeek R1 emits <think>…</think> reasoning tokens — strip them (chunk is already markdown-stripped)
                 const clean = chunk.replace(/<think>[\s\S]*?<\/think>/g, "").replace(/<\/?think>/g, "");
-                if (clean) send("grok", clean, false);
+                if (clean) send("blackHat", clean, false);
               });
-              send("grok", "", true);
+              send("blackHat", "", true);
             } catch (err) {
-              console.error("[debate] grok error:", err);
-              send("grok", "[Model unavailable — continuing without Grok]", false);
-              send("grok", "", true);
+              console.error("[debate] blackHat error:", err);
+              send("blackHat", "[Model unavailable — continuing without Black Hat debater]", false);
+              send("blackHat", "", true);
             }
           })()
         );
