@@ -3,7 +3,7 @@
 ## Overview
 - **Next.js** (App Router) + **Convex** for debate history; UI in `app/page.tsx` with `ChatThread`, `InputRow`, `SettingsTab`.
 - **API routes** (`app/api/*/route.ts`): **`/api/debate`** streams **NDJSON** (Claude + GPT-4o + Gemini in parallel; OpenRouter for non-OpenAI models, **OpenAI** for GPT stream). **`/api/moderate`**, **`/api/summarize`**, **`/api/clarify`** use OpenRouter as needed.
-- **Gemini** defaults to `google/gemini-2.0-flash-001`; settings also offer `google/gemini-flash-1.5-8b`. **Black Hat mode** swaps Gemini’s persona for a dedicated stress-test lens (`app/api/debate/route.ts`).
+- **Gemini** defaults to `google/gemini-2.0-flash-001`; settings also offer `google/gemini-flash-1.5-8b`. **Black Hat mode** adds a fourth OpenRouter stream (`deepseek/deepseek-r1`) as a stress-test lens when `settings.blackHatMode` is true (`app/api/debate/route.ts`).
 
 ## Dev commands
 - `npm run dev` / `build` / `lint` / `typecheck`
@@ -42,5 +42,19 @@ Details and placeholders: **`.env.example`**. Never commit `.env` / `.env.local`
 - **Do not** construct `new OpenAI({ apiKey })` at module top level in API routes — Next may load modules at build time without secrets. Use **lazy init** (pattern in `app/api/debate/route.ts`).
 - **Convex:** local `.env.local` uses dev URL; Vercel **`NEXT_PUBLIC_CONVEX_URL`** must match **production** after `npx convex deploy`; redeploy Next when it changes.
 
+## Learned User Preferences
+
+- Before pushing or production deploy, confirm env hygiene: `.env.local` is gitignored and not listed by `git ls-files .env.local`, and `.env.example` lists required keys with empty placeholders.
+- Convex CLI: when asked about optional AI helper files, answer `n` if the goal is the smallest repo footprint.
+
+## Learned Workspace Facts
+
+- Git remote: `https://github.com/limchinhan123/polymathx` on `main`. Production: `https://polymathx.vercel.app` (Vercel project name `polymathx`).
+- Automated quality gates are `npm run lint`, `npm run typecheck`, and `npm run build`; there is no `npm test` script unless one is added later.
+- Black Hat mode sends `settings.blackHatMode` to `/api/debate`; the server adds a fourth OpenRouter stream using `deepseek/deepseek-r1` (not Grok).
+- Default first Claude OpenRouter candidate in the debate route is `anthropic/claude-sonnet-4.6`, with legacy ids rewritten via `CLAUDE_MODEL_MAP` and Sonnet fallbacks in `streamClaudeDebate`.
+- Debate history uses Convex (`debates` table, `by_device` index, `getDebates` / `saveDebate` / `deleteDebate`); the only debate-related `localStorage` key is `polymath-x-device-id`.
+
 ## Transcript index
-- No incremental agent-transcript index file is maintained in this repo (nothing under `.cursor` beyond `rules/polymathx-context.mdc`). Skip unless you add one and link it here.
+
+- Incremental continual-learning state for this repo: `.cursor/hooks/state/continual-learning-index.json` (tracks processed **parent** agent `*.jsonl` files under `~/.cursor/projects/*/agent-transcripts/`, not `subagents/` files).

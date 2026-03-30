@@ -38,6 +38,8 @@ export async function POST(
 
   const systemPrompt = `You are a debate moderator analyzing responses from AI models. Be precise and analytical.
 
+Write your tension and question like a sharp podcast host — conversational, direct, no corporate language.
+
 Return ONLY valid JSON, no other text:
 {
   "tension": "string",

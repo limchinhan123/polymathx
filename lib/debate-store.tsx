@@ -183,6 +183,14 @@ function debateReducer(state: DebateState, action: DebateAction): DebateState {
         loadingModel: "deepseek",
       };
 
+    case "ENTER_AWAITING_ROUND2":
+      return {
+        ...state,
+        status: "awaiting_round2",
+        isLoading: false,
+        loadingModel: null,
+      };
+
     case "START_ROUND_2":
       return {
         ...state,
@@ -221,12 +229,23 @@ function debateReducer(state: DebateState, action: DebateAction): DebateState {
 
     case "RESTORE_STATUS_AFTER_SUMMARIZE_FAIL":
       if (state.status !== "summarizing") return state;
-      return {
-        ...state,
-        status: state.currentRound >= 2 ? "round2" : "round1",
-        isLoading: false,
-        loadingModel: null,
-      };
+      {
+        let nextStatus: DebateState["status"] = "round1";
+        if (state.currentRound >= 2) nextStatus = "round2";
+        else if (
+          state.messages.some(
+            (m) => m.isModerator && (m.nextQuestion !== undefined || m.agreementScore != null)
+          )
+        ) {
+          nextStatus = "awaiting_round2";
+        }
+        return {
+          ...state,
+          status: nextStatus,
+          isLoading: false,
+          loadingModel: null,
+        };
+      }
 
     case "SET_SUMMARY":
       return {
@@ -345,6 +364,9 @@ interface DebateContextValue {
   startDebate: (topic: string) => Promise<void>;
   skipClarification: () => Promise<void>;
   submitClarification: () => Promise<void>;
+  /** Run moderator only; then status becomes awaiting_round2 so the user can add context. */
+  prepareForRound2: () => Promise<void>;
+  /** Start round-2 streams (call after awaiting_round2). */
   startRound2: () => Promise<void>;
   continueDebate: () => Promise<void>;
   triggerSummarize: () => Promise<void>;
@@ -649,12 +671,19 @@ export function DebateProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const startRound2 = useCallback(async () => {
-    const { ok, nextQuestion } = await runModeration();
+  const prepareForRound2 = useCallback(async () => {
+    const { ok } = await runModeration();
     if (!ok) return;
+    dispatch({ type: "ENTER_AWAITING_ROUND2" });
+  }, [runModeration]);
+
+  const startRound2 = useCallback(async () => {
+    const s = stateRef.current;
+    const nextQuestion =
+      [...s.messages].reverse().find((m) => m.isModerator)?.nextQuestion ?? "";
     dispatch({ type: "START_ROUND_2" });
     await runRound(2, nextQuestion);
-  }, [runModeration, runRound]);
+  }, [runRound]);
 
   const continueDebate = useCallback(async () => {
     const nextRound = stateRef.current.currentRound + 1;
@@ -789,6 +818,7 @@ export function DebateProvider({ children }: { children: ReactNode }) {
     startDebate,
     skipClarification,
     submitClarification,
+    prepareForRound2,
     startRound2,
     continueDebate,
     triggerSummarize,

@@ -37,6 +37,7 @@ export type DebateStatus =
   | "clarifying"
   | "round1"
   | "moderating"
+  | "awaiting_round2"
   | "round2"
   | "continuing"
   | "summarizing"
@@ -187,6 +188,7 @@ export type DebateAction =
   | { type: "ADD_MESSAGE"; payload: Message }
   | { type: "ADD_MESSAGES"; payload: Message[] }
   | { type: "START_MODERATION" }
+  | { type: "ENTER_AWAITING_ROUND2" }
   | { type: "START_ROUND_2" }
   | { type: "START_NEXT_ROUND"; payload: number }
   | { type: "CONTINUE_DEBATE"; payload?: { extraRounds?: number } }
