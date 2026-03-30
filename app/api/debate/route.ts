@@ -36,6 +36,20 @@ const GEMINI_PERSONAS: Record<string, string> = {
     "Map the interconnections. What are the feedback loops and unintended consequences?",
 };
 
+const FORMAT_RULES = `FORMAT RULES — follow strictly:
+- Write in flowing paragraphs only
+- No bullet points, numbered lists, or headers
+- No bold or italic markdown formatting
+- No asterisks of any kind
+- Respond as if writing an opinion essay
+- One to three paragraphs maximum`;
+
+const NO_QUESTIONS_TO_HUMAN = `Do not ask the human any questions. You are debating with other AI models, not interviewing the human. If you need context, state your assumption explicitly instead. Example: 'Assuming this is for a B2C product...' then proceed.`;
+
+const MODEL_OUTPUT_CONSTRAINTS = `${FORMAT_RULES}
+
+${NO_QUESTIONS_TO_HUMAN}`;
+
 const GROK_BLACK_HAT_SYSTEM = `You are the Black Hat debater. Your job is to:
 1. Actively argue against the prevailing view
 2. Find every reason why the proposed idea will fail
@@ -43,7 +57,9 @@ const GROK_BLACK_HAT_SYSTEM = `You are the Black Hat debater. Your job is to:
 4. Be pessimistic but specific — not cynical for its own sake
 5. Steel-man the opposing view only to then demolish it
 Do not be balanced. Stress-test ruthlessly.
-150-200 words. Be direct.`;
+150-200 words. Be direct.
+
+${MODEL_OUTPUT_CONSTRAINTS}`;
 
 const DEBATE_STYLES: Record<string, string> = {
   "Steel-man":
@@ -263,6 +279,14 @@ function injectFileContext(
 
 // ── Prompt builders ─────────────────────────────────────────────────────────
 
+function humanContextPrefix(clarifications: string[]): string {
+  if (clarifications.length === 0) return "";
+  return `Context from the human:
+${clarifications.join("\n\n")}
+
+`;
+}
+
 function round1Prompts(
   modelName: string,
   personaDef: string,
@@ -270,6 +294,7 @@ function round1Prompts(
   topic: string,
   clarifications: string[]
 ): ChatMessage[] {
+  const ctx = humanContextPrefix(clarifications);
   return [
     {
       role: "system",
@@ -287,14 +312,13 @@ DEBATE RULES — follow these strictly:
 6. Steel-man first — state the strongest version of the opposing view before critiquing
 7. Flag your assumptions — if your argument rests on an assumption, name it
 
-Respond in 150-200 words. Be direct.`,
+Respond in 150-200 words. Be direct.
+
+${MODEL_OUTPUT_CONSTRAINTS}`,
     },
     {
       role: "user",
-      content: `Topic: ${topic}
-
-Clarifications from the human:
-${clarifications.length > 0 ? clarifications.join("\n") : "None provided"}
+      content: `${ctx}Topic: ${topic}
 
 Give your assessment now.`,
     },
@@ -302,14 +326,12 @@ Give your assessment now.`,
 }
 
 function grokRound1Messages(topic: string, clarifications: string[]): ChatMessage[] {
+  const ctx = humanContextPrefix(clarifications);
   return [
     { role: "system", content: GROK_BLACK_HAT_SYSTEM },
     {
       role: "user",
-      content: `Topic: ${topic}
-
-Clarifications from the human:
-${clarifications.length > 0 ? clarifications.join("\n") : "None provided"}
+      content: `${ctx}Topic: ${topic}
 
 Give your Black Hat assessment now.`,
     },
@@ -359,7 +381,9 @@ RULES:
 - No capitulation without explicit reasoning
 - Disagree where you see flawed logic
 - 150-200 words
-- Name the model you are responding to`,
+- Name the model you are responding to
+
+${MODEL_OUTPUT_CONSTRAINTS}`,
     },
     {
       role: "user",

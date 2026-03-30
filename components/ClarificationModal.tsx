@@ -8,8 +8,7 @@ export default function ClarificationModal() {
 
   if (!state.clarificationOpen) return null;
 
-  const { clarifyingQuestions, isLoading, error } = state;
-  const clarifyFailed = !isLoading && clarifyingQuestions.length === 0 && error;
+  const { clarifyingQuestions, isLoading } = state;
 
   const hasAnswers = clarifyingQuestions.some((q) => q.answer.trim());
 
@@ -18,7 +17,6 @@ export default function ClarificationModal() {
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black/60 backdrop-blur-sm z-30 animate-fade-in"
-        onClick={skipClarification}
         aria-hidden="true"
       />
 
@@ -42,7 +40,7 @@ export default function ClarificationModal() {
                 Clarify the topic
               </h3>
               <p className="text-[13px] text-[#666] leading-[1.5] mt-0.5">
-                A few quick questions — optional
+                Answer below or skip — required step before Round 1 starts
               </p>
             </div>
           </div>
@@ -81,22 +79,6 @@ export default function ClarificationModal() {
             </div>
           )}
 
-          {clarifyFailed && (
-            <div
-              role="alert"
-              className="mt-4 rounded-xl border border-red-500/30 bg-red-950/40 px-4 py-3 text-[14px] text-red-200/95 leading-[1.55]"
-            >
-              {error}
-              <button
-                type="button"
-                onClick={() => dispatch({ type: "SET_ERROR", payload: null })}
-                className="mt-2 block text-[13px] font-medium text-red-300 underline-offset-2 hover:underline"
-              >
-                Dismiss message
-              </button>
-            </div>
-          )}
-
           {/* Actions */}
           <div className="flex gap-3 mt-6">
             <button
@@ -106,7 +88,7 @@ export default function ClarificationModal() {
               className="flex-1 py-3 rounded-xl border border-[#2A2A2A] text-[15px] text-[#AAA] leading-snug
                          hover:text-[#CCC] hover:border-[#3A3A3A] transition-all disabled:opacity-40"
             >
-              {clarifyFailed ? "Start without questions" : "Skip"}
+              Skip
             </button>
             <button
               type="button"
@@ -115,7 +97,7 @@ export default function ClarificationModal() {
               className="flex-1 py-3 rounded-xl bg-[#EF9F27] text-black text-[15px] font-semibold leading-snug
                          hover:bg-[#F5AB3A] active:scale-[0.98] transition-all disabled:opacity-40"
             >
-              {hasAnswers ? "Start Debate" : "Start Anyway"}
+              {hasAnswers ? "Start Debate" : "Continue to Round 1"}
             </button>
           </div>
         </div>

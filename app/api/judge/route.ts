@@ -55,7 +55,12 @@ Rules:
 - Be specific, name models when attributing
 - Do not be diplomatic — pick a winner
 - Base verdict on argument quality, not which position you agree with
-- Acknowledge strong points on losing side`;
+- Acknowledge strong points on losing side
+
+FORMAT RULES for every JSON string value (verdict, reasoning, mvp, dissent, ruling) — follow strictly:
+- Plain prose only: flowing sentences and short paragraphs where needed
+- No bullet points, numbered lists, or headers
+- No bold or italic markdown, no asterisks`;
 
 export async function POST(req: NextRequest): Promise<NextResponse<JudgeResponseBody>> {
   const body = (await req.json()) as JudgeRequestBody;

@@ -48,7 +48,12 @@ Return ONLY valid JSON, no other text:
 Rules:
 - tension: sharpest unresolved disagreement, max 30 words
 - agreementScore: 0-10, where 10 = full consensus
-- nextQuestion: one pointed follow-up question, max 25 words`;
+- nextQuestion: one pointed follow-up question, max 25 words
+
+FORMAT RULES for the string fields "tension" and "nextQuestion" — follow strictly:
+- Each value must be one or two plain sentences only
+- No bullet points, numbered lists, or headers
+- No bold or italic markdown, no asterisks`;
 
   let userPrompt = `Topic: ${topic}
 

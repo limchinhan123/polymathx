@@ -36,6 +36,13 @@ import { clearIdleSuggestionsCache } from "./idle-suggestions";
 import { streamDebate } from "./stream";
 import { toOpenRouterModeratorModel, toOpenRouterSummarizerModel } from "./openrouter-models";
 
+/** Shown in the clarification modal if /api/clarify fails — user must still pass through the step. */
+const FALLBACK_CLARIFYING_QUESTIONS = [
+  "What specific outcome are you trying to understand or decide?",
+  "Are there constraints — time, resources, or context — that should shape the debate?",
+  "What assumptions do you currently hold about this topic?",
+] as const;
+
 // ─── Initial state ────────────────────────────────────────────────────────────
 
 const initialState: DebateState = {
@@ -335,6 +342,14 @@ function makeId() {
   return crypto.randomUUID();
 }
 
+function clarifyingQuestionsFromStrings(questions: readonly string[]): ClarifyingQuestion[] {
+  return questions.map((q) => ({
+    id: makeId(),
+    question: q,
+    answer: "",
+  }));
+}
+
 // ─── Provider ────────────────────────────────────────────────────────────────
 
 export function DebateProvider({ children }: { children: ReactNode }) {
@@ -353,20 +368,27 @@ export function DebateProvider({ children }: { children: ReactNode }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ topic }),
       });
-      if (!res.ok) throw new Error(`clarify ${res.status}`);
+      if (!res.ok) {
+        console.error("clarify HTTP", res.status);
+        dispatch({
+          type: "SET_CLARIFYING_QUESTIONS",
+          payload: clarifyingQuestionsFromStrings(FALLBACK_CLARIFYING_QUESTIONS),
+        });
+        return;
+      }
       const data = (await res.json()) as { questions: string[] };
-      const questions: ClarifyingQuestion[] = data.questions.map((q) => ({
-        id: makeId(),
-        question: q,
-        answer: "",
-      }));
+      const qs = Array.isArray(data.questions) ? data.questions : [];
+      const questions: ClarifyingQuestion[] =
+        qs.length >= 3
+          ? clarifyingQuestionsFromStrings([String(qs[0]), String(qs[1]), String(qs[2])])
+          : clarifyingQuestionsFromStrings(FALLBACK_CLARIFYING_QUESTIONS);
       dispatch({ type: "SET_CLARIFYING_QUESTIONS", payload: questions });
     } catch (err) {
-      dispatch({
-        type: "SET_ERROR",
-        payload: "Could not load clarifying questions. Check your connection and try again.",
-      });
       console.error(err);
+      dispatch({
+        type: "SET_CLARIFYING_QUESTIONS",
+        payload: clarifyingQuestionsFromStrings(FALLBACK_CLARIFYING_QUESTIONS),
+      });
     }
   }, []);
 
