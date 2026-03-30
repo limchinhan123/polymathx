@@ -171,6 +171,8 @@ export interface DebateState {
   judgeVerdict: JudgeVerdict | null;
   judgeLoading: boolean;
   attachedFile: AttachedFile | null;
+  /** Optional human notes injected into round-2 model prompts; cleared when round 2 starts. */
+  interRoundContext: string;
 }
 
 // ─── Actions ──────────────────────────────────────────────────────────────────
@@ -212,6 +214,7 @@ export type DebateAction =
   | { type: "JUDGE_CANCEL_LOADING" }
   | { type: "ATTACH_FILE"; payload: AttachedFile }
   | { type: "CLEAR_FILE" }
+  | { type: "SET_INTER_ROUND_CONTEXT"; payload: string }
   | {
       type: "LOAD_SAVED_DEBATE";
       payload: {

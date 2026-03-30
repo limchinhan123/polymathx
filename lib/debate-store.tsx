@@ -34,7 +34,7 @@ import {
   summaryFromConvexString,
 } from "./convex-debate-mappers";
 import { clearIdleSuggestionsCache } from "./idle-suggestions";
-import { streamDebate } from "./stream";
+import { streamDebate, type DebatePayload } from "./stream";
 import {
   summarizerTypingModel,
   toOpenRouterModeratorModel,
@@ -69,6 +69,7 @@ const initialState: DebateState = {
   judgeVerdict: null,
   judgeLoading: false,
   attachedFile: null,
+  interRoundContext: "",
 };
 
 // ─── Reducer ──────────────────────────────────────────────────────────────────
@@ -305,6 +306,9 @@ function debateReducer(state: DebateState, action: DebateAction): DebateState {
     case "CLEAR_FILE":
       return { ...state, attachedFile: null };
 
+    case "SET_INTER_ROUND_CONTEXT":
+      return { ...state, interRoundContext: action.payload };
+
     case "LOAD_SAVED_DEBATE": {
       const p = action.payload;
       return {
@@ -512,6 +516,8 @@ export function DebateProvider({ children }: { children: ReactNode }) {
             }
           : undefined;
 
+      const interRoundTrimmed = round === 2 ? s.interRoundContext.trim() : "";
+
       const payload = {
         topic: s.topic,
         round,
@@ -537,10 +543,15 @@ export function DebateProvider({ children }: { children: ReactNode }) {
           : {}),
         ...(moderatorQuestion ? { moderatorQuestion } : {}),
         ...(s.attachedFile ? { attachedFile: s.attachedFile } : {}),
+        ...(interRoundTrimmed ? { interRoundContext: interRoundTrimmed } : {}),
       };
 
+      if (round === 2) {
+        dispatch({ type: "SET_INTER_ROUND_CONTEXT", payload: "" });
+      }
+
       await streamDebate(
-        payload,
+        payload as DebatePayload,
         (model, chunk) => {
           const id = modelToId[model];
           if (id) dispatch({ type: "APPEND_MESSAGE_CHUNK", payload: { id, chunk } });

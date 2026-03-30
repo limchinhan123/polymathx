@@ -183,6 +183,8 @@ interface DebateRequestBody {
   ownPreviousResponse?: Round1ByModel;
   moderatorQuestion?: string;
   attachedFile?: AttachedFilePayload;
+  /** Human-provided notes for round 2 only (injected into user prompt). */
+  interRoundContext?: string;
 }
 
 type ChatMessageContent =
@@ -602,6 +604,24 @@ Give your Black Hat assessment now.`,
   ];
 }
 
+/** Round 2 only: human supplementary context plus how models should use it. */
+function interRoundSupplementaryBlock(
+  debateRound: number,
+  interRoundContext: string | undefined
+): string {
+  const t = interRoundContext?.trim();
+  if (debateRound !== 2 || !t) return "";
+  return `\n\nThe human has added this supplementary context between rounds:
+${JSON.stringify(t)}
+
+Instructions for using this context:
+- Treat this as additional information only
+- Maintain consistency with your round 1 position unless this context directly changes your reasoning
+- If this context causes you to update your position, explicitly state:
+  "Given this new information, I am updating my position because..."
+- Do not abandon your round 1 argument entirely — build on it or refine it`;
+}
+
 function roundNPrompts(
   modelName: string,
   personaDef: string,
@@ -610,7 +630,8 @@ function roundNPrompts(
   previousResponses: PreviousResponses,
   moderatorQuestion: string,
   debateRound: number,
-  ownRound1: string | undefined
+  ownRound1: string | undefined,
+  interRoundContext?: string
 ): ChatMessage[] {
   const prevRound = debateRound - 1;
   const header =
@@ -627,6 +648,7 @@ Gemini: ${previousResponses.gemini ?? ""}`;
   }
 
   const anchor = positionAnchorBlock(ownRound1);
+  const humanContextBlock = interRoundSupplementaryBlock(debateRound, interRoundContext);
 
   return [
     {
@@ -658,7 +680,7 @@ ${MODEL_OUTPUT_CONSTRAINTS}`,
 ${body}
 
 Moderator's follow-up question:
-${moderatorQuestion}
+${moderatorQuestion}${humanContextBlock}
 
 Give your round ${debateRound} response now.`,
     },
@@ -671,7 +693,8 @@ function blackHatRoundNMessages(
   previousResponses: PreviousResponses,
   moderatorQuestion: string,
   debateRound: number,
-  ownRound1: string | undefined
+  ownRound1: string | undefined,
+  interRoundContext?: string
 ): ChatMessage[] {
   const prevRound = debateRound - 1;
   const header =
@@ -688,6 +711,7 @@ Gemini: ${previousResponses.gemini ?? ""}`;
   }
 
   const anchor = positionAnchorBlock(ownRound1);
+  const humanContextBlockBh = interRoundSupplementaryBlock(debateRound, interRoundContext);
 
   return [
     { role: "system", content: `${anchor}${BLACK_HAT_DEBATER_SYSTEM}` },
@@ -698,7 +722,7 @@ Gemini: ${previousResponses.gemini ?? ""}`;
 ${body}
 
 Moderator's follow-up question:
-${moderatorQuestion}
+${moderatorQuestion}${humanContextBlockBh}
 
 Give your round ${debateRound} Black Hat response now.`,
     },
@@ -719,6 +743,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     ownPreviousResponse,
     moderatorQuestion = "",
     attachedFile,
+    interRoundContext,
   } = body;
   /** Position anchor source: explicit ownPreviousResponse wins per-field over round1ByModel. */
   const anchorByModel: Round1ByModel = { ...round1ByModel, ...(ownPreviousResponse ?? {}) };
@@ -756,7 +781,8 @@ export async function POST(req: NextRequest): Promise<Response> {
           previousResponses,
           moderatorQuestion,
           debateRound,
-          anchorByModel.claude
+          anchorByModel.claude,
+          interRoundContext
         ),
     isRound1File ? attachedFile : undefined,
     true // Claude supports vision
@@ -773,7 +799,8 @@ export async function POST(req: NextRequest): Promise<Response> {
           previousResponses,
           moderatorQuestion,
           debateRound,
-          anchorByModel.gpt
+          anchorByModel.gpt,
+          interRoundContext
         ),
     isRound1File ? attachedFile : undefined,
     true // GPT-4o supports vision
@@ -790,7 +817,8 @@ export async function POST(req: NextRequest): Promise<Response> {
           previousResponses,
           moderatorQuestion,
           debateRound,
-          anchorByModel.gemini
+          anchorByModel.gemini,
+          interRoundContext
         ),
     isRound1File ? attachedFile : undefined,
     true // Gemini Pro 1.5 supports vision
@@ -808,7 +836,8 @@ export async function POST(req: NextRequest): Promise<Response> {
             previousResponses,
             moderatorQuestion,
             debateRound,
-            anchorByModel.blackHat
+            anchorByModel.blackHat,
+            interRoundContext
           ),
       isRound1File ? attachedFile : undefined,
       false // Black Hat: inject text docs but skip images
