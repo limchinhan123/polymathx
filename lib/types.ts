@@ -48,7 +48,11 @@ export type ClaudeModel = "claude-3-5-sonnet-20241022" | "claude-3-haiku-2024030
 export type GptModel = "gpt-4o" | "gpt-4o-mini";
 export type GeminiModel = "google/gemini-2.0-flash-001" | "google/gemini-flash-1.5-8b";
 export type ModeratorModel = "mistralai/mistral-large" | "deepseek/deepseek-chat" | "claude-3-haiku-20240307";
-export type SummarizerModel = "google/gemini-pro-1.5" | "claude-3-5-sonnet-20241022" | "claude-3-haiku-20240307";
+export type SummarizerModel =
+  | "google/gemini-2.0-flash-001"
+  | "google/gemini-pro-1.5"
+  | "claude-3-5-sonnet-20241022"
+  | "claude-3-haiku-20240307";
 
 export type DebateStyle = "Steel-man" | "Socratic" | "Devil's Advocate" | "Collaborative";
 
@@ -76,7 +80,7 @@ export const DEFAULT_SETTINGS: DebateSettings = {
   gptModel: "gpt-4o",
   geminiModel: "google/gemini-2.0-flash-001",
   moderatorModel: "mistralai/mistral-large",
-  summarizerModel: "google/gemini-pro-1.5",
+  summarizerModel: "google/gemini-2.0-flash-001",
   temperature: 0.7,
   debateStyle: "Socratic",
   blackHatMode: false,
