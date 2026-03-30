@@ -74,6 +74,12 @@ export async function streamDebate(
     blackHat: "",
   };
 
+  const expectedModels: string[] = ["claude", "gpt4o", "gemini"];
+  if (payload.settings.blackHatMode === true) {
+    expectedModels.push("blackHat");
+  }
+  const completed = new Set<string>();
+
   let carry = "";
 
   while (true) {
@@ -99,6 +105,7 @@ export async function streamDebate(
           accumulated[model] = (accumulated[model] ?? "") + parsed.chunk;
           onChunk(model, parsed.chunk);
         } else {
+          completed.add(model);
           onComplete(model, accumulated[model] ?? "");
         }
       } catch {
@@ -107,5 +114,12 @@ export async function streamDebate(
     }
 
     if (done) break;
+  }
+
+  // If the connection closed without a terminal `done` for a model, stop the spinner anyway.
+  for (const m of expectedModels) {
+    if (!completed.has(m)) {
+      onComplete(m, accumulated[m] ?? "");
+    }
   }
 }

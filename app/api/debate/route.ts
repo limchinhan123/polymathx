@@ -105,6 +105,11 @@ const DEBATE_MAX_TOKENS_CLAUDE = 8192;
 
 const BLACK_HAT_MODEL = "deepseek/deepseek-r1";
 
+/** Abort if the OpenRouter SSE connection goes idle (no TCP chunks) — avoids Claude hanging forever while other models finish. */
+const OPENROUTER_STREAM_IDLE_MS = 120_000;
+/** Start Claude slightly after other debaters to avoid four simultaneous upstream connections (common Round 1 flake). */
+const CLAUDE_DEBATE_STAGGER_MS = 350;
+
 // ── Types ───────────────────────────────────────────────────────────────────
 
 interface DebateSettings {
@@ -231,9 +236,17 @@ function extractOpenRouterDeltaText(delta: {
   if (Array.isArray(c)) {
     return c
       .map((part) => {
-        if (part && typeof part === "object" && "text" in part) {
-          const t = (part as { text?: unknown }).text;
-          return typeof t === "string" ? t : "";
+        if (typeof part === "string") return part;
+        if (part && typeof part === "object") {
+          const p = part as Record<string, unknown>;
+          const typ = typeof p.type === "string" ? p.type.toLowerCase() : "";
+          if (typ.includes("thinking") || typ === "reasoning" || typ === "redacted_thinking") {
+            return "";
+          }
+          if ("text" in p) {
+            const t = p.text;
+            return typeof t === "string" ? t : "";
+          }
         }
         return "";
       })
@@ -268,18 +281,42 @@ async function streamFromOpenRouter(
     stream: true,
   };
 
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": openRouterReferer(),
-      "X-Title": "Polymath X",
-    },
-    body: JSON.stringify(body),
-  });
+  const ac = new AbortController();
+  let idleTimer: ReturnType<typeof setTimeout> | null = null;
+  const bumpIdle = () => {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      ac.abort();
+    }, OPENROUTER_STREAM_IDLE_MS);
+  };
+
+  bumpIdle();
+
+  let response: Response;
+  try {
+    response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": openRouterReferer(),
+        "X-Title": "Polymath X",
+      },
+      body: JSON.stringify(body),
+      signal: ac.signal,
+    });
+  } catch (err) {
+    if (idleTimer) clearTimeout(idleTimer);
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error(
+        `OpenRouter stream idle timeout after ${OPENROUTER_STREAM_IDLE_MS}ms (${model})`
+      );
+    }
+    throw err;
+  }
 
   if (!response.ok || !response.body) {
+    if (idleTimer) clearTimeout(idleTimer);
     const errBody = await response.text();
     console.error(
       "[debate] OpenRouter error response",
@@ -292,43 +329,62 @@ async function streamFromOpenRouter(
   const decoder = new TextDecoder();
   let carry = "";
 
-  while (true) {
-    const { done, value } = await reader.read();
-    carry += decoder.decode(value, { stream: !done });
-    const parts = carry.split("\n");
-    carry = parts.pop() ?? "";
-
-    for (const raw of parts) {
-      const line = raw.replace(/\r$/, "").trimEnd();
-      if (!line.startsWith("data: ") || line === "data: [DONE]") continue;
-      const payload = line.slice(6).trim();
-      if (!payload) continue;
-
-      let json: {
-        choices?: Array<{
-          delta?: { content?: unknown; reasoning?: unknown };
-          finish_reason?: string | null;
-        }>;
-        error?: { message?: string };
-      };
+  try {
+    while (true) {
+      let readResult: ReadableStreamReadResult<Uint8Array>;
       try {
-        json = JSON.parse(payload) as typeof json;
-      } catch {
-        continue;
+        readResult = await reader.read();
+      } catch (err) {
+        if (ac.signal.aborted || (err instanceof Error && err.name === "AbortError")) {
+          throw new Error(
+            `OpenRouter stream idle timeout after ${OPENROUTER_STREAM_IDLE_MS}ms (${model})`
+          );
+        }
+        throw err;
       }
 
-      if (json.error?.message) {
-        throw new Error(`OpenRouter stream error: ${json.error.message}`);
+      bumpIdle();
+
+      const { done, value } = readResult;
+      carry += decoder.decode(value, { stream: !done });
+      const parts = carry.split("\n");
+      carry = parts.pop() ?? "";
+
+      for (const raw of parts) {
+        const line = raw.replace(/\r$/, "").trimEnd();
+        if (!line.startsWith("data: ") || line === "data: [DONE]") continue;
+        const payload = line.slice(6).trim();
+        if (!payload) continue;
+
+        let json: {
+          choices?: Array<{
+            delta?: { content?: unknown; reasoning?: unknown };
+            finish_reason?: string | null;
+          }>;
+          error?: { message?: string };
+        };
+        try {
+          json = JSON.parse(payload) as typeof json;
+        } catch {
+          continue;
+        }
+
+        if (json.error?.message) {
+          throw new Error(`OpenRouter stream error: ${json.error.message}`);
+        }
+
+        const delta = json.choices?.[0]?.delta;
+        if (!delta) continue;
+
+        const text = extractOpenRouterDeltaText(delta);
+        if (text) onChunk(stripMarkdownChunk(text));
       }
 
-      const delta = json.choices?.[0]?.delta;
-      if (!delta) continue;
-
-      const text = extractOpenRouterDeltaText(delta);
-      if (text) onChunk(stripMarkdownChunk(text));
+      if (done) break;
     }
-
-    if (done) break;
+  } finally {
+    if (idleTimer) clearTimeout(idleTimer);
+    reader.releaseLock();
   }
 }
 
@@ -373,9 +429,22 @@ async function streamClaudeDebate(
   for (const model of models) {
     try {
       const isHaikuModel = model.toLowerCase().includes("haiku");
-      await streamFromOpenRouter(model, messages, temperature, onChunk, {
-        maxTokens: isHaikuModel ? DEBATE_MAX_TOKENS_OPENROUTER : DEBATE_MAX_TOKENS_CLAUDE,
-      });
+      let outLen = 0;
+      await streamFromOpenRouter(
+        model,
+        messages,
+        temperature,
+        (chunk) => {
+          outLen += chunk.length;
+          onChunk(chunk);
+        },
+        {
+          maxTokens: isHaikuModel ? DEBATE_MAX_TOKENS_OPENROUTER : DEBATE_MAX_TOKENS_CLAUDE,
+        }
+      );
+      if (outLen === 0) {
+        throw new Error(`Claude stream completed with no visible text (${model})`);
+      }
       return;
     } catch (err) {
       lastErr = err;
@@ -732,6 +801,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       const tasks: Promise<void>[] = [
         (async () => {
           try {
+            await new Promise((r) => setTimeout(r, CLAUDE_DEBATE_STAGGER_MS));
             await streamClaudeDebate(claudeModel, claudeMessages, temperature, (chunk) =>
               send("claude", chunk, false)
             );
