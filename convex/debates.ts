@@ -47,6 +47,7 @@ export const saveDebate = mutation({
     rounds: v.number(),
     summary: v.optional(v.string()),
     createdAt: v.string(),
+    status: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     return await ctx.db.insert("debates", {
@@ -57,7 +58,27 @@ export const saveDebate = mutation({
       rounds: args.rounds,
       summary: args.summary,
       createdAt: args.createdAt,
+      ...(args.status !== undefined ? { status: args.status } : {}),
     });
+  },
+});
+
+export const updateDebate = mutation({
+  args: {
+    id: v.id("debates"),
+    messages: v.optional(v.array(messageValidator)),
+    summary: v.optional(v.string()),
+    rounds: v.optional(v.number()),
+    status: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { id, ...updates } = args;
+    const filtered = Object.fromEntries(
+      Object.entries(updates).filter(([, val]) => val !== undefined)
+    ) as Record<string, unknown>;
+    if (Object.keys(filtered).length > 0) {
+      await ctx.db.patch(id, filtered);
+    }
   },
 });
 

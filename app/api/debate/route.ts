@@ -223,7 +223,7 @@ interface DebateRequestBody {
   ownPreviousResponse?: Round1ByModel;
   moderatorQuestion?: string;
   attachedFile?: AttachedFilePayload;
-  /** Human-provided notes for round 2 only (injected into user prompt). */
+  /** Human-provided notes between rounds (injected for round 2+). */
   interRoundContext?: string;
 }
 
@@ -527,15 +527,15 @@ async function streamClaudeDebate(
 
 // ── Position anchor (round 2+) ──────────────────────────────────────────────
 
-function positionAnchorBlock(ownRound1: string | undefined): string {
-  const t = ownRound1?.trim() ?? "";
+function positionAnchorBlock(ownPreviousRound: string | undefined): string {
+  const t = ownPreviousRound?.trim() ?? "";
   if (!t) return "";
-  return `YOUR POSITION FROM ROUND 1:
+  return `YOUR POSITION FROM THE IMMEDIATELY PREVIOUS ROUND:
 ${JSON.stringify(t)}
 
 You must maintain consistency with this position. Begin your response by restating your core argument in one sentence. Only change your position if you explicitly state: 'I am updating my position because...' followed by the specific reason.
 
-Do not contradict what you said in round 1 without acknowledgment. You are the same debater continuing an argument, not starting fresh.
+Do not contradict what you argued in that previous round without acknowledgment. You are the same debater continuing an argument, not starting fresh.
 
 `;
 }
@@ -650,22 +650,22 @@ Give your Black Hat assessment now.`,
   ];
 }
 
-/** Round 2 only: human supplementary context plus how models should use it. */
+/** Round 2+: human supplementary context between rounds. */
 function interRoundSupplementaryBlock(
   debateRound: number,
   interRoundContext: string | undefined
 ): string {
   const t = interRoundContext?.trim();
-  if (debateRound !== 2 || !t) return "";
+  if (debateRound < 2 || !t) return "";
   return `\n\nThe human has added this supplementary context between rounds:
 ${JSON.stringify(t)}
 
 Instructions for using this context:
 - Treat this as additional information only
-- Maintain consistency with your round 1 position unless this context directly changes your reasoning
+- Maintain consistency with your position from the previous round unless this context directly changes your reasoning
 - If this context causes you to update your position, explicitly state:
   "Given this new information, I am updating my position because..."
-- Do not abandon your round 1 argument entirely — build on it or refine it`;
+- Do not abandon your prior argument entirely — build on it or refine it`;
 }
 
 function roundNPrompts(

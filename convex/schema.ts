@@ -34,5 +34,7 @@ export default defineSchema({
     rounds: v.number(),
     summary: v.optional(v.string()),
     createdAt: v.string(),
+    /** "in_progress" | "complete" — optional for legacy rows */
+    status: v.optional(v.string()),
   }).index("by_device", ["deviceId"]),
 });

@@ -1,59 +1,52 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Zap, FileText, RotateCcw, Scale } from "lucide-react";
+import { Zap, FileText, Scale } from "lucide-react";
 import { useDebate } from "@/lib/debate-store";
 
+function hasStreamingInRound(
+  messages: { round: number; isModerator: boolean; isStreaming?: boolean }[],
+  round: number
+) {
+  return messages.some((m) => !m.isModerator && m.round === round && m.isStreaming);
+}
+
 export default function DebateControls() {
-  const {
-    state,
-    prepareForRound2,
-    startRound2,
-    continueDebate,
-    triggerSummarize,
-    triggerJudge,
-    dispatch,
-  } = useDebate();
+  const { state, prepareForRound2, startRound2, triggerSummarize, triggerJudge, dispatch } =
+    useDebate();
 
-  const { status, isLoading, interRoundContext } = state;
+  const { status, isLoading, interRoundContext, currentRound, messages } = state;
 
-  const [round2PreflightDone, setRound2PreflightDone] = useState(false);
-  const [contextAddedFlash, setContextAddedFlash] = useState(false);
+  const streamingR1 = hasStreamingInRound(messages, 1);
+  const streamingCurrent =
+    currentRound > 0 && hasStreamingInRound(messages, currentRound);
 
-  useEffect(() => {
-    if (status !== "awaiting_round2") {
-      setRound2PreflightDone(false);
-      setContextAddedFlash(false);
-    }
-  }, [status]);
+  const showPrepareModeration =
+    (status === "round1" || status === "debating") &&
+    !isLoading &&
+    currentRound > 0 &&
+    !hasStreamingInRound(messages, currentRound);
 
-  const showPrepareForRound2 = status === "round1" && !isLoading;
-  const showAwaitingRound2 = status === "awaiting_round2" && !isLoading;
-  const showContinue = (status === "round2" || status === "complete") && !isLoading;
+  const showAwaitingNext = status === "awaiting_next_round" && !isLoading;
+
+  const prepareLabel =
+    currentRound === 1 ? "Continue to Round 2" : `Prepare Round ${currentRound + 1}`;
+
+  const startNextLabel = `Start Round ${currentRound + 1}`;
+
   const showSummarize =
-    (status === "round1" ||
-      status === "round2" ||
-      status === "continuing" ||
-      status === "awaiting_round2") &&
-    !isLoading;
+    !isLoading &&
+    ((status === "round1" && currentRound === 1 && !streamingR1) ||
+      (status === "debating" && currentRound >= 2 && !streamingCurrent) ||
+      (showAwaitingNext && currentRound >= 2));
+
   const showViewSummary = status === "complete" && state.summary;
   const showGetVerdict =
     status === "complete" && Boolean(state.summary) && !state.judgeVerdict && !state.judgeLoading;
   const showGetVerdictLoading = status === "complete" && state.judgeLoading;
 
-  const handleReadyForRound2 = () => {
-    const has = interRoundContext.trim().length > 0;
-    setRound2PreflightDone(true);
-    if (has) {
-      setContextAddedFlash(true);
-      window.setTimeout(() => setContextAddedFlash(false), 2500);
-    }
-  };
-
   if (
-    !showPrepareForRound2 &&
-    !showAwaitingRound2 &&
-    !showContinue &&
+    !showPrepareModeration &&
+    !showAwaitingNext &&
     !showSummarize &&
     !showViewSummary &&
     !showGetVerdict &&
@@ -65,8 +58,7 @@ export default function DebateControls() {
 
   return (
     <div className="px-4 py-2 shrink-0 flex flex-col gap-3 border-t border-[#1A1A1A]">
-      {/* Inter-round context first so it stays above action buttons on mobile */}
-      {showAwaitingRound2 && (
+      {showAwaitingNext && currentRound >= 1 && (
         <div
           className="order-1 w-full shrink-0"
           style={{
@@ -86,7 +78,7 @@ export default function DebateControls() {
               marginBottom: "8px",
             }}
           >
-            Add context before Round 2 (optional)
+            Add context before Round {currentRound + 1} (optional)
           </p>
           <textarea
             placeholder="Answer the moderator's question, add new information, or clarify your position..."
@@ -97,7 +89,6 @@ export default function DebateControls() {
                 payload: e.target.value,
               })
             }
-            disabled={round2PreflightDone}
             style={{
               width: "100%",
               minHeight: "80px",
@@ -109,21 +100,14 @@ export default function DebateControls() {
               resize: "none",
               outline: "none",
               fontFamily: "DM Sans, sans-serif",
-              opacity: round2PreflightDone ? 0.65 : 1,
             }}
           />
         </div>
       )}
 
-      {showAwaitingRound2 && contextAddedFlash && (
-        <p className="order-2 text-center text-[12px] text-emerald-400/90 px-2" role="status">
-          Context added ✓
-        </p>
-      )}
-
-      <div className="order-3 flex flex-col gap-2 w-full">
+      <div className="order-2 flex flex-col gap-2 w-full">
         <div className="flex gap-2 flex-wrap">
-          {showPrepareForRound2 && (
+          {showPrepareModeration && (
             <button
               type="button"
               onClick={() => void prepareForRound2()}
@@ -133,23 +117,11 @@ export default function DebateControls() {
                          hover:bg-[#EF9F27]/20 active:scale-95 transition-all disabled:opacity-50"
             >
               <Zap size={15} />
-              Continue to Round 2
+              {prepareLabel}
             </button>
           )}
 
-          {showAwaitingRound2 && !round2PreflightDone && (
-            <button
-              type="button"
-              onClick={handleReadyForRound2}
-              className="flex-1 flex min-w-[200px] items-center justify-center gap-2 py-2.5 px-3 rounded-xl
-                         bg-[#EF9F27]/10 border border-[#EF9F27]/30 text-[#EF9F27] text-[15px] font-semibold
-                         hover:bg-[#EF9F27]/20 active:scale-95 transition-all"
-            >
-              Ready for Round 2
-            </button>
-          )}
-
-          {showAwaitingRound2 && round2PreflightDone && (
+          {showAwaitingNext && (
             <button
               type="button"
               onClick={() => void startRound2()}
@@ -159,28 +131,14 @@ export default function DebateControls() {
                          hover:bg-[#f0a832] active:scale-95 transition-all disabled:opacity-50"
             >
               <Zap size={15} />
-              Start Round 2
-            </button>
-          )}
-
-          {showContinue && (
-            <button
-              type="button"
-              onClick={continueDebate}
-              disabled={isLoading}
-              className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl
-                         bg-[#141414] border border-[#2A2A2A] text-[#888] text-[15px] font-medium
-                         hover:border-[#EF9F27]/30 hover:text-[#EF9F27] active:scale-95 transition-all disabled:opacity-50"
-            >
-              <RotateCcw size={14} />
-              Continue
+              {startNextLabel}
             </button>
           )}
 
           {showSummarize && (
             <button
               type="button"
-              onClick={triggerSummarize}
+              onClick={() => void triggerSummarize()}
               disabled={isLoading}
               className="flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl
                          bg-[#141414] border border-[#2A2A2A] text-[#888] text-[15px] font-medium

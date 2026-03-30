@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Plus, Clock, ChevronRight, Trash2 } from "lucide-react";
+import { Plus, Clock, ChevronRight, Trash2, X } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
 import { useDebate } from "@/lib/debate-store";
 import {
@@ -10,10 +10,18 @@ import {
 } from "@/lib/device-id";
 import { api } from "@/convex/_generated/api";
 import type { Doc } from "@/convex/_generated/dataModel";
+import { normalizeLegacyDebaterModelId } from "@/lib/types";
+
+function historyRowStatus(record: Doc<"debates">): "in_progress" | "complete" {
+  if (record.summary) return "complete";
+  if (record.status === "complete") return "complete";
+  return "in_progress";
+}
 
 export default function HistoryTab() {
   const { newDebate, dispatch } = useDebate();
   const [deviceId, setDeviceId] = useState<string | null>(null);
+  const [sheetRecord, setSheetRecord] = useState<Doc<"debates"> | null>(null);
 
   useEffect(() => {
     const sync = () => setDeviceId(getOrCreateDeviceId());
@@ -67,16 +75,115 @@ export default function HistoryTab() {
         ) : (
           <ul className="divide-y divide-[#1A1A1A]">
             {debates!.map((record) => (
-              <SwipeableHistoryRow key={record._id} record={record} />
+              <SwipeableHistoryRow
+                key={record._id}
+                record={record}
+                onInProgressOpen={() => setSheetRecord(record)}
+              />
             ))}
           </ul>
         )}
+      </div>
+
+      {sheetRecord && (
+        <InProgressDebateSheet
+          record={sheetRecord}
+          onClose={() => setSheetRecord(null)}
+          onStartNew={() => {
+            newDebate();
+            setSheetRecord(null);
+            dispatch({ type: "CLOSE_DRAWER" });
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function InProgressDebateSheet({
+  record,
+  onClose,
+  onStartNew,
+}: {
+  record: Doc<"debates">;
+  onClose: () => void;
+  onStartNew: () => void;
+}) {
+  const roundN = Math.max(0, record.rounds);
+
+  return (
+    <div className="fixed inset-0 z-[200] flex flex-col justify-end bg-black/60" role="dialog">
+      <button
+        type="button"
+        aria-label="Close"
+        className="absolute inset-0 cursor-default"
+        onClick={onClose}
+      />
+      <div
+        className="relative max-h-[85dvh] flex flex-col rounded-t-2xl border-t border-x border-[#2A2A2A] bg-[#0A0A0A] shadow-xl"
+        style={{ margin: "0 auto", width: "100%", maxWidth: "min(100%, 520px)" }}
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[#1A1A1A]">
+          <p className="text-[13px] text-[#CCC] font-medium truncate pr-2">{record.topic}</p>
+          <button
+            type="button"
+            aria-label="Close sheet"
+            onClick={onClose}
+            className="shrink-0 p-2 rounded-lg text-[#666] hover:text-white hover:bg-[#1A1A1A]"
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <p className="px-4 pt-3 text-[12px] text-amber-500/90">
+          Debate interrupted at Round {roundN || 1}
+        </p>
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-4">
+          {record.messages.map((m) => {
+            const label =
+              m.isModerator === true
+                ? "Moderator"
+                : MODEL_LABEL_SHORT[normalizeLegacyDebaterModelId(m.model)] ?? m.model;
+            return (
+              <div key={m.id} className="text-[13px]">
+                <p className="text-[10px] uppercase tracking-wider text-[#555] mb-1">
+                  {label}
+                  {m.round > 0 ? ` · R${m.round}` : ""}
+                </p>
+                <p className="text-[#CCC] whitespace-pre-wrap leading-relaxed">{m.content}</p>
+              </div>
+            );
+          })}
+        </div>
+        <div className="p-4 border-t border-[#1A1A1A] shrink-0">
+          <button
+            type="button"
+            onClick={onStartNew}
+            className="w-full py-3 rounded-xl bg-[#EF9F27] text-black text-[14px] font-semibold
+                       hover:bg-[#f0a832] active:scale-[0.99] transition-all"
+          >
+            Start New Debate
+          </button>
+        </div>
       </div>
     </div>
   );
 }
 
-function SwipeableHistoryRow({ record }: { record: Doc<"debates"> }) {
+const MODEL_LABEL_SHORT: Record<string, string> = {
+  claude: "Claude",
+  gpt4o: "GPT-4o",
+  gemini: "Gemini",
+  deepseek: "DeepSeek",
+  blackHat: "R1",
+};
+
+function SwipeableHistoryRow({
+  record,
+  onInProgressOpen,
+}: {
+  record: Doc<"debates">;
+  onInProgressOpen: () => void;
+}) {
   const { loadSavedDebate } = useDebate();
   const deleteDebate = useMutation(api.debates.deleteDebate);
   const [dx, setDx] = useState(0);
@@ -84,6 +191,8 @@ function SwipeableHistoryRow({ record }: { record: Doc<"debates"> }) {
   const dragging = useRef(false);
   const startClientX = useRef(0);
   const hasDraggedHorizontally = useRef(false);
+
+  const rowState = historyRowStatus(record);
 
   const onDelete = useCallback(async () => {
     try {
@@ -130,6 +239,10 @@ function SwipeableHistoryRow({ record }: { record: Doc<"debates"> }) {
       hasDraggedHorizontally.current = false;
       return;
     }
+    if (rowState === "in_progress") {
+      onInProgressOpen();
+      return;
+    }
     loadSavedDebate(record);
   };
 
@@ -140,6 +253,7 @@ function SwipeableHistoryRow({ record }: { record: Doc<"debates"> }) {
   });
   const timeLabel = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const messageCount = record.messages.length;
+  const rounds = record.rounds;
 
   return (
     <li className="relative overflow-hidden touch-pan-y">
@@ -168,16 +282,27 @@ function SwipeableHistoryRow({ record }: { record: Doc<"debates"> }) {
       >
         <div className="flex-1 min-w-0">
           <p className="text-[13px] text-[#CCC] truncate font-medium">{record.topic}</p>
-          <div className="flex items-center gap-2 mt-1">
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
             <span className="text-[10px] text-[#444]">
               {dateLabel} · {timeLabel}
             </span>
             <span className="text-[10px] text-[#333]">·</span>
             <span className="text-[10px] text-[#444]">
-              {record.rounds} round{record.rounds !== 1 ? "s" : ""}
+              {rounds} round{rounds !== 1 ? "s" : ""}
             </span>
             <span className="text-[10px] text-[#333]">·</span>
             <span className="text-[10px] text-[#444]">{messageCount} msgs</span>
+            {rowState === "in_progress" ? (
+              <span className="inline-flex items-center gap-1 text-[10px] text-amber-500/95 ml-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                Round {rounds} · In Progress
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-[10px] text-emerald-500/90 ml-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                {rounds} Rounds · Complete
+              </span>
+            )}
           </div>
         </div>
         <ChevronRight size={14} className="text-[#333] group-hover:text-[#555] transition-colors shrink-0" />

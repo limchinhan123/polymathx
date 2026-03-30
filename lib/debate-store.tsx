@@ -6,11 +6,12 @@ import React, {
   useReducer,
   useCallback,
   useRef,
+  useEffect,
   type ReactNode,
 } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import type { Doc } from "@/convex/_generated/dataModel";
+import type { Doc, Id } from "@/convex/_generated/dataModel";
 import {
   type DebateState,
   type DebateAction,
@@ -48,29 +49,117 @@ const FALLBACK_CLARIFYING_QUESTIONS = [
   "What assumptions do you currently hold about this topic?",
 ] as const;
 
-// ─── Initial state ────────────────────────────────────────────────────────────
+// ─── Session persistence (app switch / reload) ────────────────────────────────
 
-const initialState: DebateState = {
-  status: "idle",
-  topic: "",
-  messages: [],
-  currentRound: 0,
-  clarifyingQuestions: [],
-  summary: null,
-  settings: DEFAULT_SETTINGS,
-  drawerOpen: false,
-  drawerTab: "history",
-  summaryOpen: false,
-  clarificationOpen: false,
-  isLoading: false,
-  loadingModel: null,
-  error: null,
-  agreementScore: null,
-  judgeVerdict: null,
-  judgeLoading: false,
-  attachedFile: null,
-  interRoundContext: "",
-};
+const SESSION_KEY = "polymath_active_debate";
+
+/** Set by `buildInitialState` when session restore ran (optional diagnostics). */
+export let sessionRestoredTopicMarker: string | null = null;
+
+function defaultDebateState(): DebateState {
+  return {
+    status: "idle",
+    topic: "",
+    messages: [],
+    currentRound: 0,
+    clarifyingQuestions: [],
+    summary: null,
+    settings: DEFAULT_SETTINGS,
+    drawerOpen: false,
+    drawerTab: "history",
+    summaryOpen: false,
+    clarificationOpen: false,
+    isLoading: false,
+    loadingModel: null,
+    error: null,
+    agreementScore: null,
+    judgeVerdict: null,
+    judgeLoading: false,
+    attachedFile: null,
+    interRoundContext: "",
+    convexDebateId: null,
+    toast: null,
+  };
+}
+
+function saveToSession(state: DebateState): void {
+  try {
+    sessionStorage.setItem(
+      SESSION_KEY,
+      JSON.stringify({
+        topic: state.topic,
+        messages: state.messages,
+        currentRound: state.currentRound,
+        status: state.status,
+        settings: state.settings,
+        interRoundContext: state.interRoundContext,
+        convexDebateId: state.convexDebateId,
+        savedAt: new Date().toISOString(),
+      })
+    );
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+function loadSessionPartial(): Partial<DebateState> & { savedAt?: string } | null {
+  try {
+    const saved = sessionStorage.getItem(SESSION_KEY);
+    if (!saved) return null;
+    const parsed = JSON.parse(saved) as Record<string, unknown>;
+    const savedAt = new Date(String(parsed.savedAt ?? ""));
+    if (Number.isNaN(savedAt.getTime())) return null;
+    const diffHours = (Date.now() - savedAt.getTime()) / (1000 * 60 * 60);
+    if (diffHours > 2) {
+      sessionStorage.removeItem(SESSION_KEY);
+      return null;
+    }
+    return parsed as Partial<DebateState> & { savedAt: string };
+  } catch {
+    return null;
+  }
+}
+
+/** Topic from session backup if entry exists and is within TTL — for restore toast on `page.tsx` mount. */
+export function readFreshSessionDebateTopic(): string | null {
+  const snap = loadSessionPartial();
+  if (!snap || typeof snap.topic !== "string" || !snap.topic.trim()) return null;
+  return snap.topic;
+}
+
+function buildInitialState(): DebateState {
+  const base = defaultDebateState();
+  const snap = loadSessionPartial();
+  if (!snap || typeof snap.topic !== "string") {
+    sessionRestoredTopicMarker = null;
+    return base;
+  }
+  sessionRestoredTopicMarker = snap.topic;
+  const messages = Array.isArray(snap.messages)
+    ? (snap.messages as Message[]).map((m) => ({ ...m, isStreaming: false as const }))
+    : [];
+  return {
+    ...base,
+    topic: snap.topic,
+    messages,
+    currentRound: typeof snap.currentRound === "number" ? snap.currentRound : 0,
+    status: (snap.status as DebateState["status"]) ?? "idle",
+    settings: { ...DEFAULT_SETTINGS, ...(snap.settings as DebateSettings) },
+    interRoundContext: typeof snap.interRoundContext === "string" ? snap.interRoundContext : "",
+    convexDebateId: typeof snap.convexDebateId === "string" ? snap.convexDebateId : null,
+  };
+}
+
+const initialState = buildInitialState();
+
+function clearSessionStorageKey(): void {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.removeItem(SESSION_KEY);
+  } catch {
+    /* ignore */
+  }
+}
 
 // ─── Reducer ──────────────────────────────────────────────────────────────────
 
@@ -80,6 +169,7 @@ function debateReducer(state: DebateState, action: DebateAction): DebateState {
       return { ...state, topic: action.payload, error: null };
 
     case "START_DEBATE":
+      clearSessionStorageKey();
       return {
         ...state,
         status: "clarifying",
@@ -87,6 +177,7 @@ function debateReducer(state: DebateState, action: DebateAction): DebateState {
         isLoading: true,
         loadingModel: "deepseek",
         error: null,
+        convexDebateId: null,
       };
 
     case "SET_CLARIFYING_QUESTIONS":
@@ -170,7 +261,7 @@ function debateReducer(state: DebateState, action: DebateAction): DebateState {
       if (state.status !== "moderating") return state;
       return {
         ...state,
-        status: state.currentRound >= 2 ? "round2" : "round1",
+        status: state.currentRound >= 2 ? "debating" : "round1",
         isLoading: false,
         loadingModel: null,
       };
@@ -183,40 +274,42 @@ function debateReducer(state: DebateState, action: DebateAction): DebateState {
         loadingModel: "deepseek",
       };
 
-    case "ENTER_AWAITING_ROUND2":
+    case "ENTER_AWAITING_NEXT_ROUND":
       return {
         ...state,
-        status: "awaiting_round2",
+        status: "awaiting_next_round",
         isLoading: false,
         loadingModel: null,
-      };
-
-    case "START_ROUND_2":
-      return {
-        ...state,
-        status: "round2",
-        currentRound: 2,
-        isLoading: true,
-        loadingModel: "claude",
       };
 
     case "START_NEXT_ROUND":
       return {
         ...state,
-        status: "round2",
+        status: "debating",
         currentRound: action.payload,
         isLoading: true,
         loadingModel: "claude",
       };
 
-    case "CONTINUE_DEBATE":
+    case "ROUND_STREAM_TIMEOUT": {
+      const r = action.payload;
       return {
         ...state,
-        status: "moderating",
-        isLoading: true,
-        loadingModel: "deepseek",
-        error: null,
+        messages: state.messages.map((m) =>
+          m.round === r && !m.isModerator ? { ...m, isStreaming: false } : m
+        ),
+        status: "awaiting_next_round",
+        isLoading: false,
+        loadingModel: null,
+        toast: "Response timed out — continuing with available responses",
       };
+    }
+
+    case "SET_TOAST":
+      return { ...state, toast: action.payload };
+
+    case "SET_CONVEX_ID":
+      return { ...state, convexDebateId: action.payload };
 
     case "START_SUMMARIZING":
       return {
@@ -231,13 +324,14 @@ function debateReducer(state: DebateState, action: DebateAction): DebateState {
       if (state.status !== "summarizing") return state;
       {
         let nextStatus: DebateState["status"] = "round1";
-        if (state.currentRound >= 2) nextStatus = "round2";
-        else if (
+        if (state.currentRound >= 2) {
+          nextStatus = "debating";
+        } else if (
           state.messages.some(
             (m) => m.isModerator && (m.nextQuestion !== undefined || m.agreementScore != null)
           )
         ) {
-          nextStatus = "awaiting_round2";
+          nextStatus = "awaiting_next_round";
         }
         return {
           ...state,
@@ -248,6 +342,7 @@ function debateReducer(state: DebateState, action: DebateAction): DebateState {
       }
 
     case "SET_SUMMARY":
+      clearSessionStorageKey();
       return {
         ...state,
         summary: action.payload,
@@ -304,8 +399,9 @@ function debateReducer(state: DebateState, action: DebateAction): DebateState {
       return { ...state, error: action.payload, isLoading: false, loadingModel: null };
 
     case "NEW_DEBATE":
+      clearSessionStorageKey();
       return {
-        ...initialState,
+        ...defaultDebateState(),
         settings: state.settings,
         attachedFile: null,
       };
@@ -330,15 +426,19 @@ function debateReducer(state: DebateState, action: DebateAction): DebateState {
 
     case "LOAD_SAVED_DEBATE": {
       const p = action.payload;
+      const fresh = defaultDebateState();
+      let nextStatus: DebateState["status"] = "round1";
+      if (p.summary) nextStatus = "complete";
+      else if (p.rounds >= 1) nextStatus = "awaiting_next_round";
       return {
-        ...initialState,
+        ...fresh,
         settings: p.settings,
         topic: p.topic,
         messages: p.messages,
         currentRound: p.rounds,
         clarifyingQuestions: [],
         summary: p.summary,
-        status: p.summary ? "complete" : p.rounds >= 2 ? "round2" : "round1",
+        status: nextStatus,
         drawerOpen: false,
         summaryOpen: false,
         clarificationOpen: false,
@@ -348,6 +448,8 @@ function debateReducer(state: DebateState, action: DebateAction): DebateState {
         agreementScore: null,
         judgeVerdict: null,
         judgeLoading: false,
+        convexDebateId: null,
+        toast: null,
       };
     }
 
@@ -364,10 +466,11 @@ interface DebateContextValue {
   startDebate: (topic: string) => Promise<void>;
   skipClarification: () => Promise<void>;
   submitClarification: () => Promise<void>;
-  /** Run moderator only; then status becomes awaiting_round2 so the user can add context. */
+  /** Run moderator only; then status becomes awaiting_next_round so the user can add context. */
   prepareForRound2: () => Promise<void>;
-  /** Start round-2 streams (call after awaiting_round2). */
+  /** Start the next debater round (after awaiting_next_round). */
   startRound2: () => Promise<void>;
+  /** @deprecated Same as prepareForRound2 — perpetual flow always moderates before the next round. */
   continueDebate: () => Promise<void>;
   triggerSummarize: () => Promise<void>;
   newDebate: () => void;
@@ -394,9 +497,88 @@ function clarifyingQuestionsFromStrings(questions: readonly string[]): Clarifyin
 
 export function DebateProvider({ children }: { children: ReactNode }) {
   const saveDebate = useMutation(api.debates.saveDebate);
+  const updateDebate = useMutation(api.debates.updateDebate);
   const [state, dispatch] = useReducer(debateReducer, initialState);
+
+  const ensureInProgressConvexDoc = useCallback(async () => {
+    const s = stateRef.current;
+    if (s.convexDebateId) return;
+    const deviceId = getOrCreateDeviceId();
+    if (!deviceId) return;
+    try {
+      const id = await saveDebate({
+        deviceId,
+        topic: s.topic,
+        messages: [],
+        settings: mapSettingsForConvex(s.settings),
+        rounds: 0,
+        createdAt: new Date().toISOString(),
+        status: "in_progress",
+      });
+      dispatch({ type: "SET_CONVEX_ID", payload: id });
+    } catch (e) {
+      console.error("saveDebate (debate start):", e);
+    }
+  }, [saveDebate]);
   const stateRef = useRef(state);
   stateRef.current = state;
+
+  useEffect(() => {
+    saveToSession(state);
+  }, [state]);
+
+  useEffect(() => {
+    if (!state.toast) return;
+    const t = window.setTimeout(() => dispatch({ type: "SET_TOAST", payload: null }), 4500);
+    return () => window.clearTimeout(t);
+  }, [state.toast]);
+
+  const roundWatchRef = useRef<{
+    round: number;
+    timeoutId: ReturnType<typeof setTimeout>;
+  } | null>(null);
+
+  useEffect(() => {
+    const { status, currentRound, messages } = state;
+    if (status !== "round1" && status !== "debating") {
+      if (roundWatchRef.current) {
+        clearTimeout(roundWatchRef.current.timeoutId);
+        roundWatchRef.current = null;
+      }
+      return;
+    }
+    if (roundWatchRef.current && roundWatchRef.current.round !== currentRound) {
+      clearTimeout(roundWatchRef.current.timeoutId);
+      roundWatchRef.current = null;
+    }
+    const hasStreaming = messages.some(
+      (m) => !m.isModerator && m.round === currentRound && m.isStreaming
+    );
+    if (!hasStreaming) {
+      if (roundWatchRef.current?.round === currentRound) {
+        clearTimeout(roundWatchRef.current.timeoutId);
+        roundWatchRef.current = null;
+      }
+      return;
+    }
+    if (roundWatchRef.current?.round === currentRound) return;
+    const timeoutId = setTimeout(() => {
+      const s = stateRef.current;
+      if (
+        (s.status !== "round1" && s.status !== "debating") ||
+        s.currentRound !== currentRound
+      ) {
+        return;
+      }
+      const stillStreaming = s.messages.some(
+        (m) => !m.isModerator && m.round === currentRound && m.isStreaming
+      );
+      if (!stillStreaming) return;
+      dispatch({ type: "ROUND_STREAM_TIMEOUT", payload: currentRound });
+      roundWatchRef.current = null;
+    }, 60_000);
+    roundWatchRef.current = { round: currentRound, timeoutId };
+  }, [state]);
 
   const startDebate = useCallback(async (topic: string) => {
     dispatch({ type: "SET_TOPIC", payload: topic });
@@ -432,176 +614,193 @@ export function DebateProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const runRound = useCallback(async (round: number, moderatorQuestion?: string) => {
-    try {
-      const s = stateRef.current;
-      const bh = s.settings.blackHatMode;
+  const runRound = useCallback(
+    async (round: number, moderatorQuestion?: string) => {
+      try {
+        const s = stateRef.current;
+        const bh = s.settings.blackHatMode;
 
-      const claudeId = makeId();
-      const gpt4oId = makeId();
-      const geminiId = makeId();
-      const blackHatId = bh ? makeId() : null;
+        const claudeId = makeId();
+        const gpt4oId = makeId();
+        const geminiId = makeId();
+        const blackHatId = bh ? makeId() : null;
 
-      const placeholders: Message[] = [
-        {
-          id: claudeId,
-          model: "claude",
-          role: "model",
-          personaTag: s.settings.claudePersona,
-          content: "",
-          round,
-          timestamp: Date.now(),
-          isModerator: false,
-          isStreaming: true,
-        },
-        {
-          id: gpt4oId,
-          model: "gpt4o",
-          role: "model",
-          personaTag: s.settings.gptPersona,
-          content: "",
-          round,
-          timestamp: Date.now() + 1,
-          isModerator: false,
-          isStreaming: true,
-        },
-        {
-          id: geminiId,
-          model: "gemini",
-          role: "model",
-          personaTag: s.settings.geminiPersona,
-          content: "",
-          round,
-          timestamp: Date.now() + 2,
-          isModerator: false,
-          isStreaming: true,
-        },
-        ...(bh && blackHatId
-          ? [
-              {
-                id: blackHatId,
-                model: "blackHat" as const,
-                role: "model" as const,
-                personaTag: "Black Hat",
-                content: "",
-                round,
-                timestamp: Date.now() + 3,
-                isModerator: false,
-                isStreaming: true,
-                blackHat: true,
-              } satisfies Message,
-            ]
-          : []),
-      ];
-
-      dispatch({ type: "ADD_MESSAGES", payload: placeholders });
-      dispatch({ type: "SET_LOADING", payload: { loading: false } });
-
-      const modelToId: Record<string, string> = {
-        claude: claudeId,
-        gpt4o: gpt4oId,
-        gemini: geminiId,
-        /** `grok` = legacy NDJSON id from older API deploys */
-        ...(blackHatId ? { blackHat: blackHatId, grok: blackHatId } : {}),
-      };
-
-      const prevMessages = s.messages.filter((m) => m.round === round - 1 && !m.isModerator);
-      const round1Messages = s.messages.filter((m) => m.round === 1 && !m.isModerator);
-
-      const previousResponses =
-        round >= 2
-          ? {
-              claude: prevMessages.find((m) => m.model === "claude")?.content ?? "",
-              gpt: prevMessages.find((m) => m.model === "gpt4o")?.content ?? "",
-              gemini: prevMessages.find((m) => m.model === "gemini")?.content ?? "",
-              ...(bh
-                ? {
-                    blackHat:
-                      prevMessages.find((m) => isBlackHatDebaterModel(String(m.model)))?.content ?? "",
-                  }
-                : {}),
-            }
-          : undefined;
-
-      const round1ByModel =
-        round >= 2
-          ? {
-              claude: round1Messages.find((m) => m.model === "claude")?.content ?? "",
-              gpt: round1Messages.find((m) => m.model === "gpt4o")?.content ?? "",
-              gemini: round1Messages.find((m) => m.model === "gemini")?.content ?? "",
-              ...(bh
-                ? {
-                    blackHat:
-                      round1Messages.find((m) => isBlackHatDebaterModel(String(m.model)))?.content ?? "",
-                  }
-                : {}),
-            }
-          : undefined;
-
-      const interRoundTrimmed = round === 2 ? s.interRoundContext.trim() : "";
-
-      const payload = {
-        topic: s.topic,
-        round,
-        clarifications: s.clarifyingQuestions
-          .filter((q) => q.answer.trim())
-          .map((q) => `${q.question}: ${q.answer}`),
-        settings: {
-          claudeModel: s.settings.claudeModel,
-          gptModel: s.settings.gptModel,
-          geminiModel: s.settings.geminiModel,
-          temperature: s.settings.temperature,
-          debateStyle: s.settings.debateStyle,
-          blackHatMode: s.settings.blackHatMode,
-          personas: {
-            claude: s.settings.claudePersona,
-            gpt: s.settings.gptPersona,
-            gemini: s.settings.geminiPersona,
+        const placeholders: Message[] = [
+          {
+            id: claudeId,
+            model: "claude",
+            role: "model",
+            personaTag: s.settings.claudePersona,
+            content: "",
+            round,
+            timestamp: Date.now(),
+            isModerator: false,
+            isStreaming: true,
           },
-        },
-        ...(previousResponses ? { previousResponses } : {}),
-        ...(round1ByModel
-          ? { round1ByModel, ownPreviousResponse: { ...round1ByModel } }
-          : {}),
-        ...(moderatorQuestion ? { moderatorQuestion } : {}),
-        ...(s.attachedFile ? { attachedFile: s.attachedFile } : {}),
-        ...(interRoundTrimmed ? { interRoundContext: interRoundTrimmed } : {}),
-      };
+          {
+            id: gpt4oId,
+            model: "gpt4o",
+            role: "model",
+            personaTag: s.settings.gptPersona,
+            content: "",
+            round,
+            timestamp: Date.now() + 1,
+            isModerator: false,
+            isStreaming: true,
+          },
+          {
+            id: geminiId,
+            model: "gemini",
+            role: "model",
+            personaTag: s.settings.geminiPersona,
+            content: "",
+            round,
+            timestamp: Date.now() + 2,
+            isModerator: false,
+            isStreaming: true,
+          },
+          ...(bh && blackHatId
+            ? [
+                {
+                  id: blackHatId,
+                  model: "blackHat" as const,
+                  role: "model" as const,
+                  personaTag: "Black Hat",
+                  content: "",
+                  round,
+                  timestamp: Date.now() + 3,
+                  isModerator: false,
+                  isStreaming: true,
+                  blackHat: true,
+                } satisfies Message,
+              ]
+            : []),
+        ];
 
-      if (round === 2) {
-        dispatch({ type: "SET_INTER_ROUND_CONTEXT", payload: "" });
-      }
+        dispatch({ type: "ADD_MESSAGES", payload: placeholders });
+        dispatch({ type: "SET_LOADING", payload: { loading: false } });
 
-      await streamDebate(
-        payload as DebatePayload,
-        (model, chunk) => {
-          const id = modelToId[model];
-          if (id) dispatch({ type: "APPEND_MESSAGE_CHUNK", payload: { id, chunk } });
-        },
-        (model) => {
-          const id = modelToId[model];
-          if (id) dispatch({ type: "SET_MESSAGE_DONE", payload: { id } });
+        const modelToId: Record<string, string> = {
+          claude: claudeId,
+          gpt4o: gpt4oId,
+          gemini: geminiId,
+          ...(blackHatId ? { blackHat: blackHatId, grok: blackHatId } : {}),
+        };
+
+        const prevRound = round - 1;
+        const prevMessages = s.messages.filter((m) => m.round === prevRound && !m.isModerator);
+
+        const previousResponses =
+          round >= 2
+            ? {
+                claude: prevMessages.find((m) => m.model === "claude")?.content ?? "",
+                gpt: prevMessages.find((m) => m.model === "gpt4o")?.content ?? "",
+                gemini: prevMessages.find((m) => m.model === "gemini")?.content ?? "",
+                ...(bh
+                  ? {
+                      blackHat:
+                        prevMessages.find((m) => isBlackHatDebaterModel(String(m.model)))?.content ?? "",
+                    }
+                  : {}),
+              }
+            : undefined;
+
+        const ownPreviousResponse =
+          round >= 2
+            ? {
+                claude: prevMessages.find((m) => m.model === "claude")?.content ?? "",
+                gpt: prevMessages.find((m) => m.model === "gpt4o")?.content ?? "",
+                gemini: prevMessages.find((m) => m.model === "gemini")?.content ?? "",
+                ...(bh
+                  ? {
+                      blackHat:
+                        prevMessages.find((m) => isBlackHatDebaterModel(String(m.model)))?.content ?? "",
+                    }
+                  : {}),
+              }
+            : undefined;
+
+        const interRoundTrimmed = round >= 2 ? s.interRoundContext.trim() : "";
+
+        const payload = {
+          topic: s.topic,
+          round,
+          clarifications: s.clarifyingQuestions
+            .filter((q) => q.answer.trim())
+            .map((q) => `${q.question}: ${q.answer}`),
+          settings: {
+            claudeModel: s.settings.claudeModel,
+            gptModel: s.settings.gptModel,
+            geminiModel: s.settings.geminiModel,
+            temperature: s.settings.temperature,
+            debateStyle: s.settings.debateStyle,
+            blackHatMode: s.settings.blackHatMode,
+            personas: {
+              claude: s.settings.claudePersona,
+              gpt: s.settings.gptPersona,
+              gemini: s.settings.geminiPersona,
+            },
+          },
+          ...(previousResponses ? { previousResponses } : {}),
+          ...(ownPreviousResponse ? { ownPreviousResponse } : {}),
+          ...(moderatorQuestion ? { moderatorQuestion } : {}),
+          ...(s.attachedFile ? { attachedFile: s.attachedFile } : {}),
+          ...(interRoundTrimmed ? { interRoundContext: interRoundTrimmed } : {}),
+        };
+
+        if (round >= 2) {
+          dispatch({ type: "SET_INTER_ROUND_CONTEXT", payload: "" });
         }
-      );
-    } catch (err) {
-      dispatch({ type: "REMOVE_EMPTY_STREAMING_FOR_ROUND", payload: round });
-      dispatch({
-        type: "SET_ERROR",
-        payload: "Could not load model responses. Check your connection and API keys, then try again.",
-      });
-      console.error(err);
-    }
-  }, []);
+
+        await streamDebate(
+          payload as DebatePayload,
+          (model, chunk) => {
+            const id = modelToId[model];
+            if (id) dispatch({ type: "APPEND_MESSAGE_CHUNK", payload: { id, chunk } });
+          },
+          (model) => {
+            const id = modelToId[model];
+            if (id) dispatch({ type: "SET_MESSAGE_DONE", payload: { id } });
+          }
+        );
+
+        await new Promise((r) => setTimeout(r, 0));
+        const snap = stateRef.current;
+        if (snap.convexDebateId) {
+          try {
+            await updateDebate({
+              id: snap.convexDebateId as Id<"debates">,
+              messages: mapMessagesForConvex(snap.messages),
+              rounds: round,
+              status: "in_progress",
+            });
+          } catch (persistErr) {
+            console.error("updateDebate after round failed:", persistErr);
+          }
+        }
+      } catch (err) {
+        dispatch({ type: "REMOVE_EMPTY_STREAMING_FOR_ROUND", payload: round });
+        dispatch({
+          type: "SET_ERROR",
+          payload: "Could not load model responses. Check your connection and API keys, then try again.",
+        });
+        console.error(err);
+      }
+    },
+    [updateDebate]
+  );
 
   const skipClarification = useCallback(async () => {
     dispatch({ type: "SKIP_CLARIFICATION" });
+    await ensureInProgressConvexDoc();
     await runRound(1);
-  }, [runRound]);
+  }, [runRound, ensureInProgressConvexDoc]);
 
   const submitClarification = useCallback(async () => {
     dispatch({ type: "START_ROUND_1" });
+    await ensureInProgressConvexDoc();
     await runRound(1);
-  }, [runRound]);
+  }, [runRound, ensureInProgressConvexDoc]);
 
   /** Returns moderator follow-up for round 2; `ok: false` if the API call failed. */
   const runModeration = useCallback(async (): Promise<{ ok: boolean; nextQuestion: string }> => {
@@ -674,25 +873,21 @@ export function DebateProvider({ children }: { children: ReactNode }) {
   const prepareForRound2 = useCallback(async () => {
     const { ok } = await runModeration();
     if (!ok) return;
-    dispatch({ type: "ENTER_AWAITING_ROUND2" });
+    dispatch({ type: "ENTER_AWAITING_NEXT_ROUND" });
   }, [runModeration]);
 
   const startRound2 = useCallback(async () => {
     const s = stateRef.current;
+    const nextRound = s.currentRound + 1;
     const nextQuestion =
       [...s.messages].reverse().find((m) => m.isModerator)?.nextQuestion ?? "";
-    dispatch({ type: "START_ROUND_2" });
-    await runRound(2, nextQuestion);
+    dispatch({ type: "START_NEXT_ROUND", payload: nextRound });
+    await runRound(nextRound, nextQuestion);
   }, [runRound]);
 
   const continueDebate = useCallback(async () => {
-    const nextRound = stateRef.current.currentRound + 1;
-    dispatch({ type: "CONTINUE_DEBATE" });
-    const { ok, nextQuestion } = await runModeration();
-    if (!ok) return;
-    dispatch({ type: "START_NEXT_ROUND", payload: nextRound });
-    await runRound(nextRound, nextQuestion);
-  }, [runModeration, runRound]);
+    await prepareForRound2();
+  }, [prepareForRound2]);
 
   const triggerSummarize = useCallback(async () => {
     const s = stateRef.current;
@@ -723,19 +918,31 @@ export function DebateProvider({ children }: { children: ReactNode }) {
       const data = (await res.json()) as DebateSummary;
 
       const deviceId = getOrCreateDeviceId();
+      const snap = stateRef.current;
       if (deviceId) {
         try {
-          await saveDebate({
-            deviceId,
-            topic: s.topic,
-            messages: mapMessagesForConvex(s.messages),
-            settings: mapSettingsForConvex(s.settings),
-            rounds: s.currentRound,
-            summary: summaryToConvexString(data),
-            createdAt: new Date().toISOString(),
-          });
+          if (snap.convexDebateId) {
+            await updateDebate({
+              id: snap.convexDebateId as Id<"debates">,
+              summary: summaryToConvexString(data),
+              status: "complete",
+              rounds: snap.currentRound,
+              messages: mapMessagesForConvex(snap.messages),
+            });
+          } else {
+            await saveDebate({
+              deviceId,
+              topic: snap.topic,
+              messages: mapMessagesForConvex(snap.messages),
+              settings: mapSettingsForConvex(snap.settings),
+              rounds: snap.currentRound,
+              summary: summaryToConvexString(data),
+              createdAt: new Date().toISOString(),
+              status: "complete",
+            });
+          }
         } catch (persistErr) {
-          console.error("Failed to save debate to Convex:", persistErr);
+          console.error("Failed to persist debate to Convex:", persistErr);
         }
       }
 
@@ -753,7 +960,7 @@ export function DebateProvider({ children }: { children: ReactNode }) {
     } finally {
       clearTimeout(clientTimeout);
     }
-  }, [saveDebate]);
+  }, [saveDebate, updateDebate]);
 
   const triggerJudge = useCallback(async () => {
     dispatch({ type: "START_JUDGE" });

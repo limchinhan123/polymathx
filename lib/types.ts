@@ -37,9 +37,8 @@ export type DebateStatus =
   | "clarifying"
   | "round1"
   | "moderating"
-  | "awaiting_round2"
-  | "round2"
-  | "continuing"
+  | "awaiting_next_round"
+  | "debating"
   | "summarizing"
   | "complete";
 
@@ -174,6 +173,10 @@ export interface DebateState {
   attachedFile: AttachedFile | null;
   /** Optional human notes injected into round-2 model prompts; cleared when round 2 starts. */
   interRoundContext: string;
+  /** Convex document id for in-flight auto-save; null until round 1 starts. */
+  convexDebateId: string | null;
+  /** Ephemeral toast (e.g. timeout, restore); cleared by provider timer. */
+  toast: string | null;
 }
 
 // ─── Actions ──────────────────────────────────────────────────────────────────
@@ -188,10 +191,11 @@ export type DebateAction =
   | { type: "ADD_MESSAGE"; payload: Message }
   | { type: "ADD_MESSAGES"; payload: Message[] }
   | { type: "START_MODERATION" }
-  | { type: "ENTER_AWAITING_ROUND2" }
-  | { type: "START_ROUND_2" }
+  | { type: "ENTER_AWAITING_NEXT_ROUND" }
   | { type: "START_NEXT_ROUND"; payload: number }
-  | { type: "CONTINUE_DEBATE"; payload?: { extraRounds?: number } }
+  | { type: "ROUND_STREAM_TIMEOUT"; payload: number }
+  | { type: "SET_TOAST"; payload: string | null }
+  | { type: "SET_CONVEX_ID"; payload: string | null }
   | { type: "START_SUMMARIZING"; payload: ModelId }
   | { type: "RESTORE_STATUS_AFTER_SUMMARIZE_FAIL" }
   | { type: "SET_SUMMARY"; payload: DebateSummary }
