@@ -45,7 +45,7 @@ export default function ChatThread() {
           <span className="text-white">pand your perspective</span>
         </h2>
         <p className="text-base text-[#666] leading-[1.65] max-w-[320px] md:max-w-md">
-          Enter a topic below and watch Claude, GPT-4o, and Gemini debate it — with optional Grok in Black Hat
+          Enter a topic below and watch Claude, GPT-4o, and Gemini debate it — with optional DeepSeek R1 in Black Hat
           mode, Mistral moderation, and Gemini summaries.
         </p>
         <div className="flex flex-col gap-2 w-full max-w-[280px] md:max-w-md mt-2 min-h-[132px]">

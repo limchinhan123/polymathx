@@ -51,7 +51,7 @@ export default function Header() {
                     : state.loadingModel === "gemini"
                       ? "Gemini"
                       : state.loadingModel === "grok"
-                        ? "Grok"
+                        ? "DeepSeek R1"
                         : state.loadingModel}
               </span>
             )}

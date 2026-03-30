@@ -56,7 +56,7 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
           </span>
           {message.model === "grok" && (
             <span
-              className="text-[12px] px-1.5 py-0.5 rounded-full border font-medium bg-[#1A1A1A] text-[#FF6B6B] border-[#FF6B6B]/35"
+              className="text-[12px] px-1.5 py-0.5 rounded-full border font-medium bg-[#1A1A1A] text-[#06B6D4] border-[#06B6D4]/35"
               title="Black Hat — stress-testing the idea"
             >
               🎩 Black Hat

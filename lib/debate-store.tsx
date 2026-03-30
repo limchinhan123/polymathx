@@ -764,7 +764,7 @@ export function getModelColor(model: ModelId): string {
     gpt4o: "#10A37F",
     gemini: "#4285F4",
     deepseek: "#EF9F27",
-    grok: "#FF6B6B",
+    grok: "#06B6D4",
   };
   return colors[model];
 }
@@ -775,7 +775,7 @@ export function getModelInitial(model: ModelId): string {
     gpt4o: "G",
     gemini: "Gm",
     deepseek: "DS",
-    grok: "X",
+    grok: "R1",
   };
   return initials[model];
 }

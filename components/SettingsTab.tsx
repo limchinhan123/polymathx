@@ -125,7 +125,7 @@ export default function SettingsTab() {
             <div className="min-w-0">
               <p className="text-[12px] font-semibold text-[#E0E0E0]">Black Hat Mode</p>
               <p className="text-[12px] text-[#666] mt-1 leading-[1.6]">
-                Adds Grok as a 4th debater arguing against the idea
+                Adds DeepSeek R1 as a 4th debater arguing against the idea
               </p>
             </div>
             <button

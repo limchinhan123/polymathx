@@ -36,7 +36,7 @@ const GEMINI_PERSONAS: Record<string, string> = {
     "Map the interconnections. What are the feedback loops and unintended consequences?",
 };
 
-const GROK_BLACK_HAT_SYSTEM = `You are Grok, playing the Black Hat role in this debate. Your job is to:
+const GROK_BLACK_HAT_SYSTEM = `You are the Black Hat debater. Your job is to:
 1. Actively argue against the prevailing view
 2. Find every reason why the proposed idea will fail
 3. Identify risks, blind spots, and worst-case scenarios the other models are ignoring
@@ -61,7 +61,7 @@ const CLAUDE_MODEL_MAP: Record<string, string> = {
   "claude-3-haiku-20240307": "anthropic/claude-haiku-4-5",
 };
 
-const GROK_MODEL = "grok-2-1212";
+const BLACK_HAT_MODEL = "deepseek/deepseek-r1";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -131,15 +131,6 @@ function getOpenAI(): OpenAI {
   return openaiClient;
 }
 
-// ── X.AI client (lazy) — OpenAI-compatible endpoint ─────────────────────────
-
-let xaiClient: OpenAI | null = null;
-function getXAI(): OpenAI {
-  const key = process.env.XAI_API_KEY;
-  if (!key) throw new Error("XAI_API_KEY is not set");
-  xaiClient ??= new OpenAI({ apiKey: key, baseURL: "https://api.x.ai/v1" });
-  return xaiClient;
-}
 
 // ── Streaming helpers ───────────────────────────────────────────────────────
 
@@ -199,27 +190,6 @@ async function streamFromOpenAI(
   onChunk: (text: string) => void
 ): Promise<void> {
   const stream = await getOpenAI().chat.completions.create({
-    model,
-    /* eslint-disable-next-line */
-    messages: messages as any,
-    temperature,
-    max_tokens: 400,
-    stream: true,
-  });
-
-  for await (const chunk of stream) {
-    const text = chunk.choices[0]?.delta?.content ?? "";
-    if (text) onChunk(text);
-  }
-}
-
-async function streamFromXAI(
-  model: string,
-  messages: ChatMessage[],
-  temperature: number,
-  onChunk: (text: string) => void
-): Promise<void> {
-  const stream = await getXAI().chat.completions.create({
     model,
     /* eslint-disable-next-line */
     messages: messages as any,
@@ -605,9 +575,11 @@ export async function POST(req: NextRequest): Promise<Response> {
         tasks.push(
           (async () => {
             try {
-              await streamFromXAI(GROK_MODEL, grokMessages, temperature, (chunk) =>
-                send("grok", chunk, false)
-              );
+              await streamFromOpenRouter(BLACK_HAT_MODEL, grokMessages, temperature, (chunk) => {
+                // DeepSeek R1 emits <think>…</think> reasoning tokens — strip them
+                const clean = chunk.replace(/<think>[\s\S]*?<\/think>/g, "").replace(/<\/?think>/g, "");
+                if (clean) send("grok", clean, false);
+              });
               send("grok", "", true);
             } catch (err) {
               console.error("[debate] grok error:", err);
