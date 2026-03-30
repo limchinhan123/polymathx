@@ -597,22 +597,46 @@ export default function InputRow() {
         <div className="flex items-end gap-2">
           {micButton}
           {clipButton}
-          <button
-            type="button"
-            disabled={!isIdle || isLoading}
-            onClick={() => {
-              if (!isIdle || isLoading) return;
-              if (isMobile) openMobileComposer();
-              else openDesktopComposer();
-            }}
-            className="h-11 min-w-0 flex-1 overflow-hidden rounded-2xl border border-[#2A2A2A] bg-[#141414] px-4 text-left text-[16px] leading-[1.6] outline-none transition-all focus-visible:border-[#EF9F27]/40 focus-visible:ring-1 focus-visible:ring-[#EF9F27]/20 disabled:opacity-40"
-          >
-            <span
-              className={`block truncate ${collapsedMobilePreview === placeholder ? "text-[#3A3A3A]" : "text-white"}`}
+          {isMobile ? (
+            <button
+              type="button"
+              disabled={!isIdle || isLoading}
+              onClick={() => {
+                if (!isIdle || isLoading) return;
+                openMobileComposer();
+              }}
+              className="h-11 min-w-0 flex-1 overflow-hidden rounded-2xl border border-[#2A2A2A] bg-[#141414] px-4 text-left text-[16px] leading-[1.6] outline-none transition-all focus-visible:border-[#EF9F27]/40 focus-visible:ring-1 focus-visible:ring-[#EF9F27]/20 disabled:opacity-40"
             >
-              {collapsedMobilePreview}
-            </span>
-          </button>
+              <span
+                className={`block truncate ${collapsedMobilePreview === placeholder ? "text-[#3A3A3A]" : "text-white"}`}
+              >
+                {collapsedMobilePreview}
+              </span>
+            </button>
+          ) : (
+            <textarea
+              ref={textareaRef}
+              value={text}
+              onChange={(e) => {
+                setIsSuggested(false);
+                if (!desktopExpanded) openDesktopComposer();
+                setText(e.target.value);
+              }}
+              onFocus={() => {
+                if (!desktopExpanded) openDesktopComposer();
+              }}
+              onKeyDown={handleKeyDown}
+              placeholder={placeholder}
+              disabled={!isIdle || isLoading || isListening}
+              rows={1}
+              enterKeyHint="send"
+              aria-label={placeholder}
+              className="min-h-11 w-full min-w-0 flex-1 resize-none overflow-y-auto rounded-2xl border border-[#2A2A2A] bg-[#141414] px-4 py-2.5
+                text-[16px] leading-[1.6] text-white outline-none transition-all placeholder:text-[#3A3A3A]
+                focus:border-[#EF9F27]/40 focus:ring-1 focus:ring-[#EF9F27]/20 disabled:opacity-40"
+              style={{ maxHeight: TEXTAREA_MAX_HEIGHT_PX }}
+            />
+          )}
           {sendIconButton}
         </div>
       )}
