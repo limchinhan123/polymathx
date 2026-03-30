@@ -150,15 +150,22 @@ const CLAUDE_MODEL_MAP: Record<string, string> = {
 };
 
 /**
- * Sonnet debater fallbacks after the user-resolved model (see `claudeModelCandidates`).
+ * Sonnet debater models tried in order (see `claudeModelCandidates`).
  * Haiku uses only the mapped Haiku id — no chain.
  */
-const CLAUDE_SONNET_FALLBACKS = [
+const CLAUDE_SONNET_TRY_ORDER = [
   "anthropic/claude-sonnet-4.6",
-  "anthropic/claude-sonnet-4",
   "anthropic/claude-sonnet-4.5",
   "anthropic/claude-3.5-sonnet",
 ] as const;
+
+/** Map legacy / alternate slugs to canonical try-order ids. */
+const CLAUDE_SONNET_ALIAS: Record<string, (typeof CLAUDE_SONNET_TRY_ORDER)[number]> = {
+  "anthropic/claude-sonnet-4": "anthropic/claude-sonnet-4.6",
+  "anthropic/claude-sonnet-4-6": "anthropic/claude-sonnet-4.6",
+  "anthropic/claude-sonnet-4-5": "anthropic/claude-sonnet-4.5",
+  "anthropic/claude-3-5-sonnet": "anthropic/claude-3.5-sonnet",
+};
 
 /** OpenRouter: Gemini — enough for ~200 words. */
 const DEBATE_MAX_TOKENS_OPENROUTER = 2048;
@@ -486,9 +493,34 @@ function claudeModelCandidates(resolvedClaudeModel: string): string[] {
   const resolved = resolvedClaudeModel.trim();
   const isHaiku = resolved.toLowerCase().includes("haiku");
   if (isHaiku) return [resolved];
-  /** User / settings mapping first, then known-good Sonnet chain (deduped). */
-  const rest = CLAUDE_SONNET_FALLBACKS.filter((m) => m !== resolved);
-  return [resolved, ...rest];
+
+  const aliased = CLAUDE_SONNET_ALIAS[resolved] ?? resolved;
+  const tryOrder = [...CLAUDE_SONNET_TRY_ORDER];
+  if ((CLAUDE_SONNET_TRY_ORDER as readonly string[]).includes(aliased)) {
+    return tryOrder;
+  }
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const m of [aliased, ...tryOrder]) {
+    if (!seen.has(m)) {
+      seen.add(m);
+      out.push(m);
+    }
+  }
+  return out;
+}
+
+/** HTTP status from `streamFromOpenRouter` errors (`OpenRouter 404: …`) or `error.status` if set. */
+function openRouterErrorStatus(err: unknown): number | undefined {
+  if (typeof err === "object" && err !== null && "status" in err) {
+    const s = (err as { status?: unknown }).status;
+    if (typeof s === "number" && Number.isFinite(s)) return s;
+  }
+  if (err instanceof Error) {
+    const m = err.message.match(/^OpenRouter (\d{3}):/);
+    if (m) return Number(m[1]);
+  }
+  return undefined;
 }
 
 async function streamClaudeDebate(
@@ -499,7 +531,8 @@ async function streamClaudeDebate(
 ): Promise<void> {
   const models = claudeModelCandidates(resolvedClaudeModel);
   let lastErr: unknown;
-  for (const model of models) {
+  for (let i = 0; i < models.length; i++) {
+    const model = models[i];
     try {
       const isHaikuModel = model.toLowerCase().includes("haiku");
       let outLen = 0;
@@ -521,7 +554,13 @@ async function streamClaudeDebate(
       return;
     } catch (err) {
       lastErr = err;
-      console.error(`[debate] Claude OpenRouter model failed (${model}), trying fallback if any`, err);
+      const message = err instanceof Error ? err.message : String(err);
+      const status = openRouterErrorStatus(err);
+      console.error("Claude error:", message, status);
+      const retryable = status === 404 || status === 503;
+      if (!retryable || i === models.length - 1) {
+        throw err;
+      }
     }
   }
   throw lastErr;
@@ -819,7 +858,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   const gptPersonaDef = GPT_PERSONAS[gptPersona] ?? gptPersona;
   const geminiPersonaDef = GEMINI_PERSONAS[geminiPersona] ?? geminiPersona;
 
-  let claudeModel = settings.claudeModel ?? "anthropic/claude-sonnet-4.6";
+  let claudeModel = settings.claudeModel ?? CLAUDE_SONNET_TRY_ORDER[0];
   if (CLAUDE_MODEL_MAP[claudeModel]) claudeModel = CLAUDE_MODEL_MAP[claudeModel];
   const gptModel = settings.gptModel ?? "gpt-4o";
   const geminiModel = settings.geminiModel ?? "google/gemini-2.0-flash-001";
