@@ -22,6 +22,7 @@ import {
   type JudgeVerdict,
   type AttachedFile,
   DEFAULT_SETTINGS,
+  isBlackHatDebaterModel,
 } from "./types";
 import { getOrCreateDeviceId } from "./device-id";
 import {
@@ -461,7 +462,8 @@ export function DebateProvider({ children }: { children: ReactNode }) {
         claude: claudeId,
         gpt4o: gpt4oId,
         gemini: geminiId,
-        ...(blackHatId ? { blackHat: blackHatId } : {}),
+        /** `grok` = legacy NDJSON id from older API deploys */
+        ...(blackHatId ? { blackHat: blackHatId, grok: blackHatId } : {}),
       };
 
       const prevMessages = s.messages.filter((m) => m.round === round - 1 && !m.isModerator);
@@ -474,7 +476,10 @@ export function DebateProvider({ children }: { children: ReactNode }) {
               gpt: prevMessages.find((m) => m.model === "gpt4o")?.content ?? "",
               gemini: prevMessages.find((m) => m.model === "gemini")?.content ?? "",
               ...(bh
-                ? { blackHat: prevMessages.find((m) => m.model === "blackHat")?.content ?? "" }
+                ? {
+                    blackHat:
+                      prevMessages.find((m) => isBlackHatDebaterModel(String(m.model)))?.content ?? "",
+                  }
                 : {}),
             }
           : undefined;
@@ -486,7 +491,10 @@ export function DebateProvider({ children }: { children: ReactNode }) {
               gpt: round1Messages.find((m) => m.model === "gpt4o")?.content ?? "",
               gemini: round1Messages.find((m) => m.model === "gemini")?.content ?? "",
               ...(bh
-                ? { blackHat: round1Messages.find((m) => m.model === "blackHat")?.content ?? "" }
+                ? {
+                    blackHat:
+                      round1Messages.find((m) => isBlackHatDebaterModel(String(m.model)))?.content ?? "",
+                  }
                 : {}),
             }
           : undefined;
@@ -572,7 +580,10 @@ export function DebateProvider({ children }: { children: ReactNode }) {
             gpt: roundMsgs.find((m) => m.model === "gpt4o")?.content ?? "",
             gemini: roundMsgs.find((m) => m.model === "gemini")?.content ?? "",
             ...(s.settings.blackHatMode
-              ? { blackHat: roundMsgs.find((m) => m.model === "blackHat")?.content ?? "" }
+              ? {
+                  blackHat:
+                    roundMsgs.find((m) => isBlackHatDebaterModel(String(m.model)))?.content ?? "",
+                }
               : {}),
           },
         }),

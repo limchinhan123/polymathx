@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Copy, Check } from "lucide-react";
-import { type Message, MODEL_LABELS, MODEL_COLORS } from "@/lib/types";
+import { type Message, MODEL_LABELS, MODEL_COLORS, normalizeLegacyDebaterModelId } from "@/lib/types";
 import { getModelInitial } from "@/lib/debate-store";
 
 interface MessageBubbleProps {
@@ -12,9 +12,10 @@ interface MessageBubbleProps {
 export default function MessageBubble({ message }: MessageBubbleProps) {
   const [copied, setCopied] = useState(false);
 
-  const color = MODEL_COLORS[message.model];
-  const label = MODEL_LABELS[message.model];
-  const initial = getModelInitial(message.model);
+  const modelId = normalizeLegacyDebaterModelId(String(message.model));
+  const color = MODEL_COLORS[modelId];
+  const label = MODEL_LABELS[modelId];
+  const initial = getModelInitial(modelId);
   const isStreaming = message.isStreaming ?? false;
 
   const handleCopy = async () => {
@@ -44,17 +45,19 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
           <span className="text-[13px] font-semibold" style={{ color }}>
             {label}
           </span>
-          <span
-            className="text-[12px] px-1.5 py-0.5 rounded-full border font-medium"
-            style={{
-              color,
-              borderColor: `${color}40`,
-              backgroundColor: `${color}12`,
-            }}
-          >
-            {message.personaTag}
-          </span>
-          {message.model === "blackHat" && (
+          {!(modelId === "blackHat" && message.personaTag === "Black Hat") && (
+            <span
+              className="text-[12px] px-1.5 py-0.5 rounded-full border font-medium"
+              style={{
+                color,
+                borderColor: `${color}40`,
+                backgroundColor: `${color}12`,
+              }}
+            >
+              {message.personaTag}
+            </span>
+          )}
+          {modelId === "blackHat" && (
             <span
               className="text-[12px] px-1.5 py-0.5 rounded-full border font-medium bg-[#1A1A1A] text-[#06B6D4] border-[#06B6D4]/35"
               title="Black Hat — stress-testing the idea"

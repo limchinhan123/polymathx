@@ -2,6 +2,7 @@
 
 import { Menu } from "lucide-react";
 import { useDebate } from "@/lib/debate-store";
+import { normalizeLegacyDebaterModelId } from "@/lib/types";
 
 export default function Header() {
   const { state, dispatch } = useDebate();
@@ -44,15 +45,14 @@ export default function Header() {
             </div>
             {state.loadingModel && (
               <span className="text-[12px] text-[#666]">
-                {state.loadingModel === "gpt4o"
-                  ? "GPT-4o"
-                  : state.loadingModel === "claude"
-                    ? "Claude"
-                    : state.loadingModel === "gemini"
-                      ? "Gemini"
-                      : state.loadingModel === "blackHat"
-                        ? "DeepSeek R1"
-                        : state.loadingModel}
+                {(() => {
+                  const lm = normalizeLegacyDebaterModelId(String(state.loadingModel));
+                  if (lm === "gpt4o") return "GPT-4o";
+                  if (lm === "claude") return "Claude";
+                  if (lm === "gemini") return "Gemini";
+                  if (lm === "blackHat") return "R1";
+                  return state.loadingModel;
+                })()}
               </span>
             )}
           </div>

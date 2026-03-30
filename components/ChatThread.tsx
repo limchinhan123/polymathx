@@ -9,14 +9,20 @@ import ModeratorBubble from "./ModeratorBubble";
 import RoundDivider from "./RoundDivider";
 import TypingIndicator from "./TypingIndicator";
 import JudgeVerdict from "./JudgeVerdict";
-import { type Message } from "@/lib/types";
+import { type Message, normalizeLegacyDebaterModelId } from "@/lib/types";
 
 const DEBATER_ORDER = ["claude", "gpt4o", "gemini", "blackHat"] as const;
 
 function sortDebaters(msgs: Message[]): Message[] {
-  return [...msgs].sort(
-    (a, b) => DEBATER_ORDER.indexOf(a.model as (typeof DEBATER_ORDER)[number]) - DEBATER_ORDER.indexOf(b.model as (typeof DEBATER_ORDER)[number])
-  );
+  return [...msgs].sort((a, b) => {
+    const ia = DEBATER_ORDER.indexOf(
+      normalizeLegacyDebaterModelId(String(a.model)) as (typeof DEBATER_ORDER)[number]
+    );
+    const ib = DEBATER_ORDER.indexOf(
+      normalizeLegacyDebaterModelId(String(b.model)) as (typeof DEBATER_ORDER)[number]
+    );
+    return ia - ib;
+  });
 }
 
 export default function ChatThread() {

@@ -83,12 +83,21 @@ const CLAUDE_MODEL_MAP: Record<string, string> = {
   "claude-3-haiku-20240307": "anthropic/claude-haiku-4.5",
 };
 
-/** Sonnet debater: try in order until one succeeds (Haiku uses a single model only). */
+/**
+ * Sonnet debater fallbacks after the user-resolved model (see `claudeModelCandidates`).
+ * Haiku uses only the mapped Haiku id — no chain.
+ */
 const CLAUDE_SONNET_FALLBACKS = [
   "anthropic/claude-sonnet-4.6",
+  "anthropic/claude-sonnet-4",
   "anthropic/claude-sonnet-4.5",
   "anthropic/claude-3.5-sonnet",
 ] as const;
+
+/** OpenRouter: Gemini / Black Hat — enough for ~200 words. */
+const DEBATE_MAX_TOKENS_OPENROUTER = 2048;
+/** Claude Sonnet 4.x may reserve output budget for reasoning; keep headroom for the visible answer. */
+const DEBATE_MAX_TOKENS_CLAUDE = 8192;
 
 const BLACK_HAT_MODEL = "deepseek/deepseek-r1";
 
@@ -181,25 +190,74 @@ function stripMarkdown(text: string): string {
 
 // ── Streaming helpers ───────────────────────────────────────────────────────
 
+type OpenRouterStreamOptions = {
+  maxTokens?: number;
+  /**
+   * Claude on OpenRouter can stream reasoning separately; widen max_tokens and ask OpenRouter
+   * not to mix hidden reasoning into the same budget as the user-visible answer when supported.
+   */
+  claudeDebate?: boolean;
+};
+
+/** Pull visible text from an OpenAI-style delta (string, array parts, or rare reasoning string). */
+function extractOpenRouterDeltaText(delta: {
+  content?: unknown;
+  reasoning?: unknown;
+}): string {
+  const c = delta.content;
+  if (typeof c === "string" && c.length > 0) return c;
+  if (Array.isArray(c)) {
+    return c
+      .map((part) => {
+        if (part && typeof part === "object" && "text" in part) {
+          const t = (part as { text?: unknown }).text;
+          return typeof t === "string" ? t : "";
+        }
+        return "";
+      })
+      .join("");
+  }
+  const r = delta.reasoning;
+  if (typeof r === "string" && r.length > 0) return r;
+  return "";
+}
+
 async function streamFromOpenRouter(
   model: string,
   messages: ChatMessage[],
   temperature: number,
-  onChunk: (text: string) => void
+  onChunk: (text: string) => void,
+  options?: OpenRouterStreamOptions
 ): Promise<void> {
+  const key = process.env.OPENROUTER_API_KEY?.trim();
+  if (!key) throw new Error("OPENROUTER_API_KEY is not set");
+
   const serializedMessages = messages.map((m) => ({
     role: m.role,
     content: m.content,
   }));
+
+  const max_tokens = options?.maxTokens ?? DEBATE_MAX_TOKENS_OPENROUTER;
+  const body: Record<string, unknown> = {
+    model,
+    messages: serializedMessages,
+    temperature,
+    max_tokens,
+    stream: true,
+  };
+  if (options?.claudeDebate) {
+    body.reasoning = { exclude: true };
+  }
+
   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+      Authorization: `Bearer ${key}`,
       "Content-Type": "application/json",
       "HTTP-Referer": openRouterReferer(),
       "X-Title": "Polymath X",
     },
-    body: JSON.stringify({ model, messages: serializedMessages, temperature, max_tokens: 400, stream: true }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok || !response.body) {
@@ -213,25 +271,45 @@ async function streamFromOpenRouter(
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
+  let carry = "";
 
   while (true) {
     const { done, value } = await reader.read();
-    if (done) break;
-    const lines = decoder
-      .decode(value, { stream: true })
-      .split("\n")
-      .filter((l) => l.startsWith("data: ") && l !== "data: [DONE]");
-    for (const line of lines) {
+    carry += decoder.decode(value, { stream: !done });
+    const parts = carry.split("\n");
+    carry = parts.pop() ?? "";
+
+    for (const raw of parts) {
+      const line = raw.replace(/\r$/, "").trimEnd();
+      if (!line.startsWith("data: ") || line === "data: [DONE]") continue;
+      const payload = line.slice(6).trim();
+      if (!payload) continue;
+
+      let json: {
+        choices?: Array<{
+          delta?: { content?: unknown; reasoning?: unknown };
+          finish_reason?: string | null;
+        }>;
+        error?: { message?: string };
+      };
       try {
-        const json = JSON.parse(line.slice(6)) as {
-          choices: Array<{ delta?: { content?: string } }>;
-        };
-        const text = json.choices[0]?.delta?.content ?? "";
-        if (text) onChunk(stripMarkdownChunk(text));
+        json = JSON.parse(payload) as typeof json;
       } catch {
-        /* skip */
+        continue;
       }
+
+      if (json.error?.message) {
+        throw new Error(`OpenRouter stream error: ${json.error.message}`);
+      }
+
+      const delta = json.choices?.[0]?.delta;
+      if (!delta) continue;
+
+      const text = extractOpenRouterDeltaText(delta);
+      if (text) onChunk(stripMarkdownChunk(text));
     }
+
+    if (done) break;
   }
 }
 
@@ -256,18 +334,31 @@ async function streamFromOpenAI(
   }
 }
 
+function claudeModelCandidates(resolvedClaudeModel: string): string[] {
+  const resolved = resolvedClaudeModel.trim();
+  const isHaiku = resolved.toLowerCase().includes("haiku");
+  if (isHaiku) return [resolved];
+  /** User / settings mapping first, then known-good Sonnet chain (deduped). */
+  const rest = CLAUDE_SONNET_FALLBACKS.filter((m) => m !== resolved);
+  return [resolved, ...rest];
+}
+
 async function streamClaudeDebate(
   resolvedClaudeModel: string,
   messages: ChatMessage[],
   temperature: number,
   onChunk: (text: string) => void
 ): Promise<void> {
-  const isHaiku = resolvedClaudeModel.toLowerCase().includes("haiku");
-  const models: string[] = isHaiku ? [resolvedClaudeModel] : [...CLAUDE_SONNET_FALLBACKS];
+  const models = claudeModelCandidates(resolvedClaudeModel);
   let lastErr: unknown;
   for (const model of models) {
     try {
-      await streamFromOpenRouter(model, messages, temperature, onChunk);
+      const isHaikuModel = model.toLowerCase().includes("haiku");
+      await streamFromOpenRouter(model, messages, temperature, onChunk, {
+        maxTokens: isHaikuModel ? DEBATE_MAX_TOKENS_OPENROUTER : DEBATE_MAX_TOKENS_CLAUDE,
+        /** Sonnet 4.x reasoning budget; Haiku path stays standard chat. */
+        claudeDebate: !isHaikuModel,
+      });
       return;
     } catch (err) {
       lastErr = err;
@@ -664,11 +755,24 @@ export async function POST(req: NextRequest): Promise<Response> {
         tasks.push(
           (async () => {
             try {
+              let bhBuf = "";
+              let bhSent = 0;
+              const flushBlackHatVisible = () => {
+                let cleaned = bhBuf.replace(/<think>[\s\S]*?<\/think>/gi, "");
+                cleaned = cleaned.replace(/<\/?think>/gi, "");
+                const low = cleaned.toLowerCase();
+                const thinkOpen = low.lastIndexOf("<think>");
+                const thinkClose = low.lastIndexOf("</think>");
+                if (thinkOpen > thinkClose) cleaned = cleaned.slice(0, thinkOpen);
+                const delta = cleaned.slice(bhSent);
+                bhSent = cleaned.length;
+                if (delta) send("blackHat", delta, false);
+              };
               await streamFromOpenRouter(BLACK_HAT_MODEL, blackHatMessages, temperature, (chunk) => {
-                // DeepSeek R1 emits <think>…</think> reasoning tokens — strip them (chunk is already markdown-stripped)
-                const clean = chunk.replace(/<think>[\s\S]*?<\/think>/g, "").replace(/<\/?think>/g, "");
-                if (clean) send("blackHat", clean, false);
+                bhBuf += chunk;
+                flushBlackHatVisible();
               });
+              flushBlackHatVisible();
               send("blackHat", "", true);
             } catch (err) {
               console.error("[debate] blackHat error:", err);

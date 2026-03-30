@@ -2,12 +2,24 @@
 
 export type ModelId = "claude" | "gpt4o" | "gemini" | "deepseek" | "blackHat";
 
+const KNOWN_DEBATER_MODELS: ModelId[] = ["claude", "gpt4o", "gemini", "deepseek", "blackHat"];
+
+/** Streams / old saves may still use `grok` for the Black Hat debater. */
+export function normalizeLegacyDebaterModelId(model: string): ModelId {
+  const m = model === "grok" ? "blackHat" : model;
+  return KNOWN_DEBATER_MODELS.includes(m as ModelId) ? (m as ModelId) : "claude";
+}
+
+export function isBlackHatDebaterModel(model: string): boolean {
+  return model === "blackHat" || model === "grok";
+}
+
 export const MODEL_LABELS: Record<ModelId, string> = {
   claude: "Claude",
   gpt4o: "GPT-4o",
   gemini: "Gemini",
   deepseek: "DeepSeek",
-  blackHat: "DeepSeek R1",
+  blackHat: "R1",
 };
 
 export const MODEL_COLORS: Record<ModelId, string> = {

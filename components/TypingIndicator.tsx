@@ -1,4 +1,4 @@
-import { type ModelId, MODEL_LABELS, MODEL_COLORS } from "@/lib/types";
+import { type ModelId, MODEL_LABELS, MODEL_COLORS, normalizeLegacyDebaterModelId } from "@/lib/types";
 import { getModelInitial } from "@/lib/debate-store";
 
 interface TypingIndicatorProps {
@@ -6,9 +6,10 @@ interface TypingIndicatorProps {
 }
 
 export default function TypingIndicator({ model }: TypingIndicatorProps) {
-  const color = MODEL_COLORS[model];
-  const label = MODEL_LABELS[model];
-  const initial = getModelInitial(model);
+  const id = normalizeLegacyDebaterModelId(String(model));
+  const color = MODEL_COLORS[id];
+  const label = MODEL_LABELS[id];
+  const initial = getModelInitial(id);
 
   return (
     <div className="flex gap-3 px-4 py-2">

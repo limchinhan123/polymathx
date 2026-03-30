@@ -46,6 +46,10 @@ export interface DebatePayload {
   };
 }
 
+function normalizeStreamModelId(model: string): string {
+  return model === "grok" ? "blackHat" : model;
+}
+
 export async function streamDebate(
   payload: DebatePayload,
   onChunk: (model: string, chunk: string) => void,
@@ -70,14 +74,18 @@ export async function streamDebate(
     blackHat: "",
   };
 
+  let carry = "";
+
   while (true) {
     const { done, value } = await reader.read();
-    if (done) break;
+    carry += decoder.decode(value, { stream: !done });
+    const parts = carry.split("\n");
+    carry = parts.pop() ?? "";
 
-    const text = decoder.decode(value, { stream: true });
-    const lines = text.split("\n").filter(Boolean);
+    for (const raw of parts) {
+      const line = raw.replace(/\r$/, "").trimEnd();
+      if (!line) continue;
 
-    for (const line of lines) {
       try {
         const parsed = JSON.parse(line) as {
           model: string;
@@ -85,15 +93,19 @@ export async function streamDebate(
           done: boolean;
         };
 
+        const model = normalizeStreamModelId(parsed.model);
+
         if (!parsed.done) {
-          accumulated[parsed.model] = (accumulated[parsed.model] ?? "") + parsed.chunk;
-          onChunk(parsed.model, parsed.chunk);
+          accumulated[model] = (accumulated[model] ?? "") + parsed.chunk;
+          onChunk(model, parsed.chunk);
         } else {
-          onComplete(parsed.model, accumulated[parsed.model] ?? "");
+          onComplete(model, accumulated[model] ?? "");
         }
       } catch {
         /* Skip malformed lines */
       }
     }
+
+    if (done) break;
   }
 }
