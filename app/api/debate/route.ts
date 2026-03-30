@@ -61,7 +61,7 @@ const CLAUDE_MODEL_MAP: Record<string, string> = {
   "claude-3-haiku-20240307": "anthropic/claude-haiku-4-5",
 };
 
-const GROK_MODEL = "x-ai/grok-2-1212";
+const GROK_MODEL = "grok-2-1212";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -126,11 +126,19 @@ type ChatMessage = {
 let openaiClient: OpenAI | null = null;
 function getOpenAI(): OpenAI {
   const key = process.env.OPENAI_API_KEY;
-  if (!key) {
-    throw new Error("OPENAI_API_KEY is not set");
-  }
+  if (!key) throw new Error("OPENAI_API_KEY is not set");
   openaiClient ??= new OpenAI({ apiKey: key });
   return openaiClient;
+}
+
+// ── X.AI client (lazy) — OpenAI-compatible endpoint ─────────────────────────
+
+let xaiClient: OpenAI | null = null;
+function getXAI(): OpenAI {
+  const key = process.env.XAI_API_KEY;
+  if (!key) throw new Error("XAI_API_KEY is not set");
+  xaiClient ??= new OpenAI({ apiKey: key, baseURL: "https://api.x.ai/v1" });
+  return xaiClient;
 }
 
 // ── Streaming helpers ───────────────────────────────────────────────────────
@@ -191,6 +199,27 @@ async function streamFromOpenAI(
   onChunk: (text: string) => void
 ): Promise<void> {
   const stream = await getOpenAI().chat.completions.create({
+    model,
+    /* eslint-disable-next-line */
+    messages: messages as any,
+    temperature,
+    max_tokens: 400,
+    stream: true,
+  });
+
+  for await (const chunk of stream) {
+    const text = chunk.choices[0]?.delta?.content ?? "";
+    if (text) onChunk(text);
+  }
+}
+
+async function streamFromXAI(
+  model: string,
+  messages: ChatMessage[],
+  temperature: number,
+  onChunk: (text: string) => void
+): Promise<void> {
+  const stream = await getXAI().chat.completions.create({
     model,
     /* eslint-disable-next-line */
     messages: messages as any,
@@ -576,7 +605,7 @@ export async function POST(req: NextRequest): Promise<Response> {
         tasks.push(
           (async () => {
             try {
-              await streamFromOpenRouter(GROK_MODEL, grokMessages, temperature, (chunk) =>
+              await streamFromXAI(GROK_MODEL, grokMessages, temperature, (chunk) =>
                 send("grok", chunk, false)
               );
               send("grok", "", true);
