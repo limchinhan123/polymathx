@@ -50,7 +50,11 @@ const NO_QUESTIONS_TO_HUMAN = `Do not ask the human any questions. You are debat
 
 const DEBATE_DIRECTED_AT_MODELS = `You are debating OTHER AI MODELS, not the human. Direct your arguments at Claude, GPT-4o, or Gemini by name. The human is observing, not participating.`;
 
+const DEBATE_PARAGRAPH_STRUCTURE = `Structure your response in 2-3 distinct paragraphs. Put a blank line between each paragraph. Each paragraph should make one clear point.`;
+
 const MODEL_OUTPUT_CONSTRAINTS = `${FORMAT_RULES}
+
+${DEBATE_PARAGRAPH_STRUCTURE}
 
 ${NO_QUESTIONS_TO_HUMAN}`;
 
@@ -174,8 +178,23 @@ function getOpenAI(): OpenAI {
 
 // ── Post-process streamed text (models still emit markdown sometimes) ───────
 
-/** Same transforms as stripMarkdown but no `.trim()` — safe between SSE chunks so words are not glued. */
-function stripMarkdownChunk(text: string): string {
+/** Cap consecutive newlines at one blank line (no more than 2 `\n` in a row). */
+function normalizeDebateNewlines(text: string): string {
+  return text.replace(/\n{3,}/g, "\n\n");
+}
+
+/** Turn single newlines between non-blank lines into paragraph breaks (`\n\n`). */
+function ensureParagraphBlankLines(text: string): string {
+  let cur = text;
+  let prev = "";
+  while (cur !== prev) {
+    prev = cur;
+    cur = cur.replace(/([^\n])\n([^\n])/g, "$1\n\n$2");
+  }
+  return cur;
+}
+
+function applyMarkdownStripping(text: string): string {
   return text
     .replace(/\*\*(.*?)\*\*/g, "$1")
     .replace(/\*(.*?)\*/g, "$1")
@@ -184,8 +203,16 @@ function stripMarkdownChunk(text: string): string {
     .replace(/^\s*\d+\.\s/gm, "");
 }
 
+/** Same transforms as stripMarkdown but no `.trim()` — safe between SSE chunks so words are not glued. */
+function stripMarkdownChunk(text: string): string {
+  return normalizeDebateNewlines(applyMarkdownStripping(text));
+}
+
 function stripMarkdown(text: string): string {
-  return stripMarkdownChunk(text).trim();
+  let t = applyMarkdownStripping(text);
+  t = ensureParagraphBlankLines(t);
+  t = normalizeDebateNewlines(t);
+  return t.trim();
 }
 
 // ── Streaming helpers ───────────────────────────────────────────────────────

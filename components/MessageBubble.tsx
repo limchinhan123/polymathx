@@ -18,6 +18,8 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
   const initial = getModelInitial(modelId);
   const isStreaming = message.isStreaming ?? false;
 
+  const paragraphs = message.content.split("\n").filter((p) => p.trim());
+
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(message.content);
@@ -84,10 +86,26 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
         {/* Bubble */}
         <div className="relative">
           <div
-            className="rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-[16px] leading-[1.6] text-[#E0E0E0]"
-            style={{ backgroundColor: `${color}14`, border: `1px solid ${color}22` }}
+            className="rounded-2xl rounded-tl-sm text-[16px] text-[#E0E0E0]"
+            style={{
+              backgroundColor: `${color}14`,
+              border: `1px solid ${color}22`,
+              padding: "14px 16px",
+            }}
           >
-            {message.content}
+            {paragraphs.length > 0
+              ? paragraphs.map((paragraph, i) => (
+                  <p
+                    key={i}
+                    style={{
+                      marginBottom: i < paragraphs.length - 1 ? "12px" : 0,
+                      lineHeight: "1.7",
+                    }}
+                  >
+                    {paragraph}
+                  </p>
+                ))
+              : null}
             {isStreaming && (
               <span
                 className="inline-block w-[2px] h-[16px] ml-[2px] align-middle rounded-sm streaming-cursor"
