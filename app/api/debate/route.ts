@@ -160,8 +160,13 @@ const CLAUDE_SONNET_FALLBACKS = [
   "anthropic/claude-3.5-sonnet",
 ] as const;
 
-/** OpenRouter: Gemini / Black Hat — enough for ~200 words. */
+/** OpenRouter: Gemini — enough for ~200 words. */
 const DEBATE_MAX_TOKENS_OPENROUTER = 2048;
+/**
+ * DeepSeek R1 uses many tokens for internal chain-of-thought before emitting `content`.
+ * Do not use the generic OpenRouter cap here or the stream often ends mid-thought with no visible answer.
+ */
+const DEBATE_MAX_TOKENS_BLACK_HAT_R1 = 8192;
 /** Claude Sonnet 4.x may reserve output budget for reasoning; keep headroom for the visible answer. */
 const DEBATE_MAX_TOKENS_CLAUDE = 8192;
 
@@ -290,7 +295,11 @@ type OpenRouterStreamOptions = {
   maxTokens?: number;
 };
 
-/** Pull visible text from an OpenAI-style delta (string, array parts, or rare reasoning string). */
+/**
+ * Pull user-visible text from an OpenAI-style delta.
+ * Never surface `delta.reasoning` (e.g. DeepSeek R1): it is chain-of-thought, not the debate answer,
+ * and streaming it confuses users and can exhaust max_tokens before `content` starts.
+ */
 function extractOpenRouterDeltaText(delta: {
   content?: unknown;
   reasoning?: unknown;
@@ -316,8 +325,6 @@ function extractOpenRouterDeltaText(delta: {
       })
       .join("");
   }
-  const r = delta.reasoning;
-  if (typeof r === "string" && r.length > 0) return r;
   return "";
 }
 
@@ -955,10 +962,16 @@ export async function POST(req: NextRequest): Promise<Response> {
                 bhSent = cleaned.length;
                 if (delta) send("blackHat", delta, false);
               };
-              await streamFromOpenRouter(BLACK_HAT_MODEL, blackHatMessages, temperature, (chunk) => {
-                bhBuf += chunk;
-                flushBlackHatVisible();
-              });
+              await streamFromOpenRouter(
+                BLACK_HAT_MODEL,
+                blackHatMessages,
+                temperature,
+                (chunk) => {
+                  bhBuf += chunk;
+                  flushBlackHatVisible();
+                },
+                { maxTokens: DEBATE_MAX_TOKENS_BLACK_HAT_R1 }
+              );
               flushBlackHatVisible();
               send("blackHat", "", true);
             } catch (err) {
