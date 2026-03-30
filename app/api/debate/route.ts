@@ -215,6 +215,8 @@ interface DebateRequestBody {
   topic?: string;
   /** Current debater round (1-indexed). */
   round?: number;
+  /** Debater round about to run — takes precedence over `round` when provided. */
+  pendingRound?: number;
   clarifications?: string[];
   settings?: DebateSettings;
   previousResponses?: PreviousResponses;
@@ -785,7 +787,8 @@ export async function POST(req: NextRequest): Promise<Response> {
   const body = (await req.json()) as DebateRequestBody;
   const {
     topic = "",
-    round: debateRound = 1,
+    round: roundFromBody = 1,
+    pendingRound: pendingRoundFromBody,
     clarifications = [],
     settings = {},
     previousResponses = {},
@@ -795,6 +798,10 @@ export async function POST(req: NextRequest): Promise<Response> {
     attachedFile,
     interRoundContext,
   } = body;
+  const debateRound =
+    typeof pendingRoundFromBody === "number" && pendingRoundFromBody >= 1
+      ? pendingRoundFromBody
+      : roundFromBody;
   /** Position anchor source: explicit ownPreviousResponse wins per-field over round1ByModel. */
   const anchorByModel: Round1ByModel = { ...round1ByModel, ...(ownPreviousResponse ?? {}) };
   const isRound1File = debateRound <= 1 && !!attachedFile;

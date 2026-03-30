@@ -37,7 +37,8 @@ export type DebateStatus =
   | "clarifying"
   | "round1"
   | "moderating"
-  | "awaiting_next_round"
+  /** After moderation, before starting the next debater round (see `pendingRound`). */
+  | "pending_round"
   | "debating"
   | "summarizing"
   | "complete";
@@ -157,6 +158,8 @@ export interface DebateState {
   topic: string;
   messages: Message[];
   currentRound: number;
+  /** Debater round about to start when `status === "pending_round"`; otherwise `0`. */
+  pendingRound: number;
   clarifyingQuestions: ClarifyingQuestion[];
   summary: DebateSummary | null;
   settings: DebateSettings;
@@ -191,7 +194,7 @@ export type DebateAction =
   | { type: "ADD_MESSAGE"; payload: Message }
   | { type: "ADD_MESSAGES"; payload: Message[] }
   | { type: "START_MODERATION" }
-  | { type: "ENTER_AWAITING_NEXT_ROUND" }
+  | { type: "ENTER_PENDING_ROUND"; payload: number }
   | { type: "START_NEXT_ROUND"; payload: number }
   | { type: "ROUND_STREAM_TIMEOUT"; payload: number }
   | { type: "SET_TOAST"; payload: string | null }

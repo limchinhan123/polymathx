@@ -8,9 +8,11 @@ export default function Header() {
   const { state, dispatch } = useDebate();
 
   const roundLabel =
-    state.status === "idle" || state.currentRound === 0
-      ? "--"
-      : `R${state.currentRound}`;
+    state.status === "pending_round" && state.pendingRound >= 1
+      ? `R${state.pendingRound - 1} ✓`
+      : state.status === "idle" || state.currentRound === 0
+        ? "--"
+        : `R${state.currentRound}`;
 
   return (
     <header className="flex items-center justify-between px-4 py-3 border-b border-[#2A2A2A] bg-[#0A0A0A] shrink-0">
@@ -24,10 +26,17 @@ export default function Header() {
           className="inline-flex items-center justify-center rounded-full text-[10px] font-semibold px-2 py-0.5 border"
           style={{
             backgroundColor:
-              state.currentRound > 0 ? "rgba(239,159,39,0.15)" : "rgba(42,42,42,0.6)",
+              state.currentRound > 0 || state.status === "pending_round"
+                ? "rgba(239,159,39,0.15)"
+                : "rgba(42,42,42,0.6)",
             borderColor:
-              state.currentRound > 0 ? "rgba(239,159,39,0.4)" : "#2A2A2A",
-            color: state.currentRound > 0 ? "#EF9F27" : "#666",
+              state.currentRound > 0 || state.status === "pending_round"
+                ? "rgba(239,159,39,0.4)"
+                : "#2A2A2A",
+            color:
+              state.currentRound > 0 || state.status === "pending_round"
+                ? "#EF9F27"
+                : "#666",
           }}
         >
           {roundLabel}

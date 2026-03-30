@@ -62,6 +62,7 @@ function defaultDebateState(): DebateState {
     topic: "",
     messages: [],
     currentRound: 0,
+    pendingRound: 0,
     clarifyingQuestions: [],
     summary: null,
     settings: DEFAULT_SETTINGS,
@@ -84,12 +85,20 @@ function defaultDebateState(): DebateState {
 
 function saveToSession(state: DebateState): void {
   try {
+    // Never persist `complete` without a full summary payload (old bug re-saved after SET_SUMMARY).
+    // Clear so reload does not restore a bogus `complete` row or stale pre-summary snapshot.
+    if (state.status === "complete") {
+      clearSessionStorageKey();
+      return;
+    }
+
     sessionStorage.setItem(
       SESSION_KEY,
       JSON.stringify({
         topic: state.topic,
         messages: state.messages,
         currentRound: state.currentRound,
+        pendingRound: state.pendingRound,
         status: state.status,
         settings: state.settings,
         interRoundContext: state.interRoundContext,
@@ -138,12 +147,50 @@ function buildInitialState(): DebateState {
   const messages = Array.isArray(snap.messages)
     ? (snap.messages as Message[]).map((m) => ({ ...m, isStreaming: false as const }))
     : [];
+  const currentRound = typeof snap.currentRound === "number" ? snap.currentRound : 0;
+  const rawStatus =
+    typeof (snap as { status?: unknown }).status === "string"
+      ? String((snap as { status?: string }).status)
+      : "idle";
+  let restoredStatus: DebateState["status"] =
+    rawStatus === "awaiting_next_round" || rawStatus === "awaiting_round2"
+      ? "pending_round"
+      : (rawStatus as DebateState["status"]) ?? "idle";
+
+  let restoredPending =
+    typeof (snap as { pendingRound?: unknown }).pendingRound === "number"
+      ? (snap as { pendingRound: number }).pendingRound
+      : 0;
+
+  // Legacy session rows: `complete` was saved without summary → normalize so Round 2 stays reachable.
+  if (restoredStatus === "complete") {
+    const hasModerator = messages.some((m) => m.isModerator);
+    if (currentRound >= 1 && hasModerator) {
+      restoredStatus = "pending_round";
+      restoredPending = currentRound + 1;
+    } else if (currentRound >= 1) {
+      restoredStatus = "round1";
+      restoredPending = 0;
+    } else {
+      restoredStatus = "idle";
+      restoredPending = 0;
+    }
+  }
+
+  if (restoredStatus === "pending_round" && restoredPending < 1) {
+    restoredPending = Math.max(1, currentRound + 1);
+  }
+  if (restoredStatus !== "pending_round") {
+    restoredPending = 0;
+  }
+
   return {
     ...base,
     topic: snap.topic,
     messages,
-    currentRound: typeof snap.currentRound === "number" ? snap.currentRound : 0,
-    status: (snap.status as DebateState["status"]) ?? "idle",
+    currentRound,
+    pendingRound: restoredPending,
+    status: restoredStatus,
     settings: { ...DEFAULT_SETTINGS, ...(snap.settings as DebateSettings) },
     interRoundContext: typeof snap.interRoundContext === "string" ? snap.interRoundContext : "",
     convexDebateId: typeof snap.convexDebateId === "string" ? snap.convexDebateId : null,
@@ -163,7 +210,7 @@ function clearSessionStorageKey(): void {
 
 // ─── Reducer ──────────────────────────────────────────────────────────────────
 
-function debateReducer(state: DebateState, action: DebateAction): DebateState {
+function debateReducerInner(state: DebateState, action: DebateAction): DebateState {
   switch (action.type) {
     case "SET_TOPIC":
       return { ...state, topic: action.payload, error: null };
@@ -173,6 +220,7 @@ function debateReducer(state: DebateState, action: DebateAction): DebateState {
       return {
         ...state,
         status: "clarifying",
+        pendingRound: 0,
         clarificationOpen: true,
         isLoading: true,
         loadingModel: "deepseek",
@@ -200,6 +248,7 @@ function debateReducer(state: DebateState, action: DebateAction): DebateState {
       return {
         ...state,
         status: "round1",
+        pendingRound: 0,
         clarificationOpen: false,
         currentRound: 1,
         isLoading: true,
@@ -210,6 +259,7 @@ function debateReducer(state: DebateState, action: DebateAction): DebateState {
       return {
         ...state,
         status: "round1",
+        pendingRound: 0,
         clarificationOpen: false,
         currentRound: 1,
         isLoading: true,
@@ -274,10 +324,11 @@ function debateReducer(state: DebateState, action: DebateAction): DebateState {
         loadingModel: "deepseek",
       };
 
-    case "ENTER_AWAITING_NEXT_ROUND":
+    case "ENTER_PENDING_ROUND":
       return {
         ...state,
-        status: "awaiting_next_round",
+        status: "pending_round",
+        pendingRound: action.payload,
         isLoading: false,
         loadingModel: null,
       };
@@ -287,6 +338,7 @@ function debateReducer(state: DebateState, action: DebateAction): DebateState {
         ...state,
         status: "debating",
         currentRound: action.payload,
+        pendingRound: 0,
         isLoading: true,
         loadingModel: "claude",
       };
@@ -298,7 +350,8 @@ function debateReducer(state: DebateState, action: DebateAction): DebateState {
         messages: state.messages.map((m) =>
           m.round === r && !m.isModerator ? { ...m, isStreaming: false } : m
         ),
-        status: "awaiting_next_round",
+        status: "pending_round",
+        pendingRound: r + 1,
         isLoading: false,
         loadingModel: null,
         toast: "Response timed out — continuing with available responses",
@@ -331,11 +384,14 @@ function debateReducer(state: DebateState, action: DebateAction): DebateState {
             (m) => m.isModerator && (m.nextQuestion !== undefined || m.agreementScore != null)
           )
         ) {
-          nextStatus = "awaiting_next_round";
+          nextStatus = "pending_round";
         }
+        const nextPending =
+          nextStatus === "pending_round" ? state.currentRound + 1 : 0;
         return {
           ...state,
           status: nextStatus,
+          pendingRound: nextPending,
           isLoading: false,
           loadingModel: null,
         };
@@ -347,6 +403,7 @@ function debateReducer(state: DebateState, action: DebateAction): DebateState {
         ...state,
         summary: action.payload,
         status: "complete",
+        pendingRound: 0,
         isLoading: false,
         loadingModel: null,
         summaryOpen: true,
@@ -429,13 +486,15 @@ function debateReducer(state: DebateState, action: DebateAction): DebateState {
       const fresh = defaultDebateState();
       let nextStatus: DebateState["status"] = "round1";
       if (p.summary) nextStatus = "complete";
-      else if (p.rounds >= 1) nextStatus = "awaiting_next_round";
+      else if (p.rounds >= 1) nextStatus = "pending_round";
+      const loadedPending = nextStatus === "pending_round" ? p.rounds + 1 : 0;
       return {
         ...fresh,
         settings: p.settings,
         topic: p.topic,
         messages: p.messages,
         currentRound: p.rounds,
+        pendingRound: loadedPending,
         clarifyingQuestions: [],
         summary: p.summary,
         status: nextStatus,
@@ -458,6 +517,14 @@ function debateReducer(state: DebateState, action: DebateAction): DebateState {
   }
 }
 
+function debateReducer(state: DebateState, action: DebateAction): DebateState {
+  const next = debateReducerInner(state, action);
+  if (next.status !== state.status) {
+    console.log("Status transition:", state.status, "→", next.status, `(action: ${action.type})`);
+  }
+  return next;
+}
+
 // ─── Context ──────────────────────────────────────────────────────────────────
 
 interface DebateContextValue {
@@ -466,9 +533,9 @@ interface DebateContextValue {
   startDebate: (topic: string) => Promise<void>;
   skipClarification: () => Promise<void>;
   submitClarification: () => Promise<void>;
-  /** Run moderator only; then status becomes awaiting_next_round so the user can add context. */
+  /** Run moderator only; then status becomes `pending_round` so the user can add context. */
   prepareForRound2: () => Promise<void>;
-  /** Start the next debater round (after awaiting_next_round). */
+  /** Start the next debater round (after `pending_round`). */
   startRound2: () => Promise<void>;
   /** @deprecated Same as prepareForRound2 — perpetual flow always moderates before the next round. */
   continueDebate: () => Promise<void>;
@@ -725,6 +792,7 @@ export function DebateProvider({ children }: { children: ReactNode }) {
         const payload = {
           topic: s.topic,
           round,
+          pendingRound: round,
           clarifications: s.clarifyingQuestions
             .filter((q) => q.answer.trim())
             .map((q) => `${q.question}: ${q.answer}`),
@@ -873,12 +941,14 @@ export function DebateProvider({ children }: { children: ReactNode }) {
   const prepareForRound2 = useCallback(async () => {
     const { ok } = await runModeration();
     if (!ok) return;
-    dispatch({ type: "ENTER_AWAITING_NEXT_ROUND" });
+    const cr = stateRef.current.currentRound;
+    dispatch({ type: "ENTER_PENDING_ROUND", payload: cr + 1 });
   }, [runModeration]);
 
   const startRound2 = useCallback(async () => {
     const s = stateRef.current;
-    const nextRound = s.currentRound + 1;
+    const nextRound =
+      s.pendingRound > 0 ? s.pendingRound : s.currentRound + 1;
     const nextQuestion =
       [...s.messages].reverse().find((m) => m.isModerator)?.nextQuestion ?? "";
     dispatch({ type: "START_NEXT_ROUND", payload: nextRound });

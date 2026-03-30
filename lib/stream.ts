@@ -2,6 +2,8 @@ export interface DebatePayload {
   topic: string;
   /** Current debater round (1, 2, 3, …). */
   round: number;
+  /** Same as `round` when starting that round — API prefers this when set. */
+  pendingRound?: number;
   clarifications: string[];
   settings: {
     claudeModel: string;
