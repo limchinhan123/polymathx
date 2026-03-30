@@ -50,6 +50,19 @@ const NO_QUESTIONS_TO_HUMAN = `Do not ask the human any questions. You are debat
 
 const DEBATE_DIRECTED_AT_MODELS = `You are debating OTHER AI MODELS, not the human. Direct your arguments at Claude, GPT-4o, or Gemini by name. The human is observing, not participating.`;
 
+/** Round 1 only — models must not reference each other (they have not seen other responses yet). */
+const ROUND_1_INDEPENDENCE_RULES = `IMPORTANT — ROUND 1 RULES:
+This is your FIRST response. You have NOT seen what other models think yet.
+
+- Do NOT reference Claude, GPT-4o, Gemini, or any other model
+- Do NOT say 'other models may think...' or 'some might argue...'
+- Do NOT anticipate or pre-empt other positions
+- Give your OWN independent assessment only
+- Pretend you are the only one answering
+- You will see other responses in round 2
+
+Think of round 1 as your opening statement before hearing anyone else's argument.`;
+
 const DEBATE_PARAGRAPH_STRUCTURE = `Structure your response in 2-3 distinct paragraphs. Put a blank line between each paragraph. Each paragraph should make one clear point.`;
 
 const MODEL_OUTPUT_CONSTRAINTS = `${FORMAT_RULES}
@@ -68,6 +81,20 @@ Do not be balanced. Stress-test ruthlessly.
 150-200 words. Be direct.
 
 ${DEBATE_DIRECTED_AT_MODELS}
+
+${MODEL_OUTPUT_CONSTRAINTS}`;
+
+/** Round 1 Black Hat — same role, no cross-model framing (other debaters' outputs are not visible yet). */
+const BLACK_HAT_DEBATER_ROUND1_SYSTEM = `You are the Black Hat debater. Your job is to:
+1. Actively argue against the prevailing view
+2. Find every reason why the proposed idea will fail
+3. Identify risks, blind spots, and worst-case scenarios that uncritical optimism often overlooks
+4. Be pessimistic but specific — not cynical for its own sake
+5. Steel-man the strongest counter-case on the topic only to then demolish it
+Do not be balanced. Stress-test ruthlessly.
+150-200 words. Be direct.
+
+${ROUND_1_INDEPENDENCE_RULES}
 
 ${MODEL_OUTPUT_CONSTRAINTS}`;
 
@@ -544,12 +571,12 @@ DEBATE RULES — follow these strictly:
 3. Be specific — reference the exact claim you are challenging
 4. Depth over breadth — one strong argument beats three weak ones
 5. No hedging — commit to a position, qualify only when essential
-6. Steel-man first — state the strongest version of the opposing view before critiquing
+6. Steel-man first — state the strongest version of the counter-position on the topic itself before critiquing (do not attribute it to other debaters)
 7. Flag your assumptions — if your argument rests on an assumption, name it
 
 Respond in 150-200 words. Be direct.
 
-${DEBATE_DIRECTED_AT_MODELS}
+${ROUND_1_INDEPENDENCE_RULES}
 
 ${MODEL_OUTPUT_CONSTRAINTS}`,
     },
@@ -565,7 +592,7 @@ Give your assessment now.`,
 function blackHatRound1Messages(topic: string, clarifications: string[]): ChatMessage[] {
   const ctx = humanContextPrefix(clarifications);
   return [
-    { role: "system", content: BLACK_HAT_DEBATER_SYSTEM },
+    { role: "system", content: BLACK_HAT_DEBATER_ROUND1_SYSTEM },
     {
       role: "user",
       content: `${ctx}Topic: ${topic}
@@ -717,6 +744,7 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   const isRound1 = debateRound <= 1;
 
+  // Round 1: messages are only system + user (topic, clarifications, optional file). Never inject previousResponses.
   const claudeMessages = injectFileContext(
     isRound1
       ? round1Prompts("Claude", claudePersonaDef, styleDef, topic, clarifications)
