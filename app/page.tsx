@@ -9,6 +9,7 @@ import DebateControls from "@/components/DebateControls";
 import InputRow from "@/components/InputRow";
 import SwipeHint from "@/components/SwipeHint";
 import Drawer from "@/components/Drawer";
+import DesktopSidebar from "@/components/DesktopSidebar";
 import ClarificationModal from "@/components/ClarificationModal";
 import SummarySheet from "@/components/SummarySheet";
 
@@ -33,23 +34,23 @@ export default function DebatePage() {
 
   return (
     <div
-      className="relative flex flex-col h-dvh w-full max-w-content mx-auto overflow-hidden bg-[#0A0A0A] swipe-area"
+      className="relative flex flex-col h-dvh w-full max-w-content md:max-w-tablet lg:max-w-shell mx-auto overflow-hidden bg-[#0A0A0A] swipe-area"
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
-      {/* Fixed top */}
-      <Header />
-      <TopicPill />
+      <div className="flex flex-1 min-h-0 flex-col lg:flex-row w-full">
+        <DesktopSidebar />
 
-      {/* Scrollable chat */}
-      <ChatThread />
+        <div className="flex flex-1 min-w-0 min-h-0 flex-col">
+          <Header />
+          <TopicPill />
+          <ChatThread />
+          <DebateControls />
+          <InputRow />
+          <SwipeHint />
+        </div>
+      </div>
 
-      {/* Bottom controls */}
-      <DebateControls />
-      <InputRow />
-      <SwipeHint />
-
-      {/* Overlays */}
       <Drawer />
       <ClarificationModal />
       <SummarySheet />

@@ -28,6 +28,8 @@ body {
   background-color: var(--bg);
   color: white;
   font-family: var(--font-dm-sans), "DM Sans", sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
 }
 
 /* ── Custom scrollbar ── */

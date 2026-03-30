@@ -44,8 +44,8 @@ export default function ModeratorBubble({ message }: ModeratorBubbleProps) {
           <div className="w-6 h-6 rounded-full bg-[#EF9F27]/20 flex items-center justify-center">
             <Scale size={11} className="text-[#EF9F27]" />
           </div>
-          <span className="text-[11px] font-semibold text-[#EF9F27]">DeepSeek</span>
-          <span className="text-[9px] px-1.5 py-0.5 rounded-full border border-[#EF9F27]/30 text-[#EF9F27]/70 font-medium">
+          <span className="text-[13px] font-semibold text-[#EF9F27]">Mistral</span>
+          <span className="text-[12px] px-1.5 py-0.5 rounded-full border border-[#EF9F27]/30 text-[#EF9F27]/70 font-medium">
             Moderator
           </span>
         </div>
@@ -60,7 +60,7 @@ export default function ModeratorBubble({ message }: ModeratorBubbleProps) {
       </div>
 
       {/* Content */}
-      <p className="text-[12px] leading-relaxed text-[#CCC]">{message.content}</p>
+      <p className="text-[16px] leading-[1.6] text-[#CCC]">{message.content}</p>
 
       {/* Agreement score bar */}
       {typeof score === "number" && (

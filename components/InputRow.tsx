@@ -228,7 +228,7 @@ export default function InputRow() {
             disabled={!isIdle || isLoading || isListening}
             maxLength={300}
             className="w-full bg-[#141414] border border-[#2A2A2A] rounded-2xl px-4 py-2.5
-                       text-[13px] text-white placeholder-[#3A3A3A] outline-none
+                       text-[16px] leading-[1.6] text-white placeholder-[#3A3A3A] outline-none
                        focus:border-[#EF9F27]/40 focus:ring-1 focus:ring-[#EF9F27]/20
                        disabled:opacity-40 transition-all"
           />

@@ -1,6 +1,7 @@
 export interface DebatePayload {
   topic: string;
-  round: 1 | 2;
+  /** Current debater round (1, 2, 3, …). */
+  round: number;
   clarifications: string[];
   settings: {
     claudeModel: string;
@@ -19,6 +20,14 @@ export interface DebatePayload {
     claude: string;
     gpt: string;
     gemini: string;
+    grok?: string;
+  };
+  /** Each model's round-1 output — server uses for position anchoring in round 2+. */
+  round1ByModel?: {
+    claude?: string;
+    gpt?: string;
+    gemini?: string;
+    grok?: string;
   };
   moderatorQuestion?: string;
 }
@@ -44,6 +53,7 @@ export async function streamDebate(
     claude: "",
     gpt4o: "",
     gemini: "",
+    grok: "",
   };
 
   while (true) {
@@ -68,7 +78,7 @@ export async function streamDebate(
           onComplete(parsed.model, accumulated[parsed.model] ?? "");
         }
       } catch {
-        // Skip malformed lines
+        /* Skip malformed lines */
       }
     }
   }

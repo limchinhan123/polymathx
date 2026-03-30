@@ -19,6 +19,7 @@ import {
   type DebateSummary,
   type ClarifyingQuestion,
   type ModelId,
+  type JudgeVerdict,
   DEFAULT_SETTINGS,
 } from "./types";
 import { getOrCreateDeviceId } from "./device-id";
@@ -52,6 +53,8 @@ const initialState: DebateState = {
   loadingModel: null,
   error: null,
   agreementScore: null,
+  judgeVerdict: null,
+  judgeLoading: false,
 };
 
 // ─── Reducer ──────────────────────────────────────────────────────────────────
@@ -174,6 +177,15 @@ function debateReducer(state: DebateState, action: DebateAction): DebateState {
         loadingModel: "claude",
       };
 
+    case "START_NEXT_ROUND":
+      return {
+        ...state,
+        status: "round2",
+        currentRound: action.payload,
+        isLoading: true,
+        loadingModel: "claude",
+      };
+
     case "CONTINUE_DEBATE":
       return {
         ...state,
@@ -200,6 +212,8 @@ function debateReducer(state: DebateState, action: DebateAction): DebateState {
         isLoading: false,
         loadingModel: null,
         summaryOpen: true,
+        judgeVerdict: null,
+        judgeLoading: false,
       };
 
     case "UPDATE_SETTINGS":
@@ -252,6 +266,15 @@ function debateReducer(state: DebateState, action: DebateAction): DebateState {
         settings: state.settings,
       };
 
+    case "START_JUDGE":
+      return { ...state, judgeLoading: true, error: null };
+
+    case "JUDGE_COMPLETE":
+      return { ...state, judgeLoading: false, judgeVerdict: action.payload };
+
+    case "JUDGE_CANCEL_LOADING":
+      return { ...state, judgeLoading: false };
+
     case "LOAD_SAVED_DEBATE": {
       const p = action.payload;
       return {
@@ -270,6 +293,8 @@ function debateReducer(state: DebateState, action: DebateAction): DebateState {
         loadingModel: null,
         error: null,
         agreementScore: null,
+        judgeVerdict: null,
+        judgeLoading: false,
       };
     }
 
@@ -292,6 +317,7 @@ interface DebateContextValue {
   newDebate: () => void;
   loadSavedDebate: (record: Doc<"debates">) => void;
   updateSettings: (settings: Partial<DebateSettings>) => void;
+  triggerJudge: () => Promise<void>;
 }
 
 const DebateContext = createContext<DebateContextValue | null>(null);
@@ -338,11 +364,12 @@ export function DebateProvider({ children }: { children: ReactNode }) {
   const runRound = useCallback(async (round: number, moderatorQuestion?: string) => {
     try {
       const s = stateRef.current;
+      const bh = s.settings.blackHatMode;
 
-      // Create placeholder messages with isStreaming: true
       const claudeId = makeId();
       const gpt4oId = makeId();
       const geminiId = makeId();
+      const grokId = bh ? makeId() : null;
 
       const placeholders: Message[] = [
         {
@@ -371,40 +398,71 @@ export function DebateProvider({ children }: { children: ReactNode }) {
           id: geminiId,
           model: "gemini",
           role: "model",
-          personaTag: s.settings.blackHatMode ? "Black Hat" : s.settings.geminiPersona,
+          personaTag: s.settings.geminiPersona,
           content: "",
           round,
           timestamp: Date.now() + 2,
           isModerator: false,
           isStreaming: true,
-          ...(s.settings.blackHatMode ? { blackHat: true } : {}),
         },
+        ...(bh && grokId
+          ? [
+              {
+                id: grokId,
+                model: "grok" as const,
+                role: "model" as const,
+                personaTag: "Black Hat",
+                content: "",
+                round,
+                timestamp: Date.now() + 3,
+                isModerator: false,
+                isStreaming: true,
+                blackHat: true,
+              } satisfies Message,
+            ]
+          : []),
       ];
 
       dispatch({ type: "ADD_MESSAGES", payload: placeholders });
-      // Hide the typing indicator — streaming cursors take over
       dispatch({ type: "SET_LOADING", payload: { loading: false } });
 
       const modelToId: Record<string, string> = {
         claude: claudeId,
         gpt4o: gpt4oId,
         gemini: geminiId,
+        ...(grokId ? { grok: grokId } : {}),
       };
 
-      // Build previousResponses for round 2+
       const prevMessages = s.messages.filter((m) => m.round === round - 1 && !m.isModerator);
+      const round1Messages = s.messages.filter((m) => m.round === 1 && !m.isModerator);
+
       const previousResponses =
         round >= 2
           ? {
               claude: prevMessages.find((m) => m.model === "claude")?.content ?? "",
               gpt: prevMessages.find((m) => m.model === "gpt4o")?.content ?? "",
               gemini: prevMessages.find((m) => m.model === "gemini")?.content ?? "",
+              ...(bh
+                ? { grok: prevMessages.find((m) => m.model === "grok")?.content ?? "" }
+                : {}),
+            }
+          : undefined;
+
+      const round1ByModel =
+        round >= 2
+          ? {
+              claude: round1Messages.find((m) => m.model === "claude")?.content ?? "",
+              gpt: round1Messages.find((m) => m.model === "gpt4o")?.content ?? "",
+              gemini: round1Messages.find((m) => m.model === "gemini")?.content ?? "",
+              ...(bh
+                ? { grok: round1Messages.find((m) => m.model === "grok")?.content ?? "" }
+                : {}),
             }
           : undefined;
 
       const payload = {
         topic: s.topic,
-        round: (round <= 1 ? 1 : 2) as 1 | 2,
+        round,
         clarifications: s.clarifyingQuestions
           .filter((q) => q.answer.trim())
           .map((q) => `${q.question}: ${q.answer}`),
@@ -422,6 +480,7 @@ export function DebateProvider({ children }: { children: ReactNode }) {
           },
         },
         ...(previousResponses ? { previousResponses } : {}),
+        ...(round1ByModel ? { round1ByModel } : {}),
         ...(moderatorQuestion ? { moderatorQuestion } : {}),
       };
 
@@ -478,6 +537,9 @@ export function DebateProvider({ children }: { children: ReactNode }) {
             claude: roundMsgs.find((m) => m.model === "claude")?.content ?? "",
             gpt: roundMsgs.find((m) => m.model === "gpt4o")?.content ?? "",
             gemini: roundMsgs.find((m) => m.model === "gemini")?.content ?? "",
+            ...(s.settings.blackHatMode
+              ? { grok: roundMsgs.find((m) => m.model === "grok")?.content ?? "" }
+              : {}),
           },
         }),
       });
@@ -526,12 +588,12 @@ export function DebateProvider({ children }: { children: ReactNode }) {
   }, [runModeration, runRound]);
 
   const continueDebate = useCallback(async () => {
+    const nextRound = stateRef.current.currentRound + 1;
     dispatch({ type: "CONTINUE_DEBATE" });
     const { ok, nextQuestion } = await runModeration();
     if (!ok) return;
-    dispatch({ type: "START_ROUND_2" });
-    const s = stateRef.current;
-    await runRound(s.currentRound + 1, nextQuestion);
+    dispatch({ type: "START_NEXT_ROUND", payload: nextRound });
+    await runRound(nextRound, nextQuestion);
   }, [runModeration, runRound]);
 
   const triggerSummarize = useCallback(async () => {
@@ -582,6 +644,40 @@ export function DebateProvider({ children }: { children: ReactNode }) {
     }
   }, [saveDebate]);
 
+  const triggerJudge = useCallback(async () => {
+    dispatch({ type: "START_JUDGE" });
+    try {
+      const s = stateRef.current;
+      if (!s.summary) {
+        dispatch({ type: "JUDGE_CANCEL_LOADING" });
+        return;
+      }
+      const allMessages = s.messages
+        .filter((m) => !m.isModerator && m.content.trim())
+        .map((m) => ({ model: m.model, content: m.content, round: m.round }));
+
+      const res = await fetch("/api/judge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topic: s.topic,
+          allMessages,
+          summary: s.summary,
+        }),
+      });
+      if (!res.ok) throw new Error(`judge ${res.status}`);
+      const data = (await res.json()) as JudgeVerdict;
+      dispatch({ type: "JUDGE_COMPLETE", payload: data });
+    } catch (err) {
+      dispatch({ type: "JUDGE_CANCEL_LOADING" });
+      dispatch({
+        type: "SET_ERROR",
+        payload: "Could not load the judge verdict. Check your connection and try again.",
+      });
+      console.error(err);
+    }
+  }, []);
+
   const newDebate = useCallback(() => {
     clearIdleSuggestionsCache();
     dispatch({ type: "NEW_DEBATE" });
@@ -617,6 +713,7 @@ export function DebateProvider({ children }: { children: ReactNode }) {
     newDebate,
     loadSavedDebate,
     updateSettings,
+    triggerJudge,
   };
 
   return <DebateContext.Provider value={value}>{children}</DebateContext.Provider>;
@@ -657,6 +754,7 @@ export function getModelColor(model: ModelId): string {
     gpt4o: "#10A37F",
     gemini: "#4285F4",
     deepseek: "#EF9F27",
+    grok: "#FF6B6B",
   };
   return colors[model];
 }
@@ -667,6 +765,7 @@ export function getModelInitial(model: ModelId): string {
     gpt4o: "G",
     gemini: "Gm",
     deepseek: "DS",
+    grok: "X",
   };
   return initials[model];
 }

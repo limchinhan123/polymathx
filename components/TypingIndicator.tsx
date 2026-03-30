@@ -13,13 +13,13 @@ export default function TypingIndicator({ model }: TypingIndicatorProps) {
   return (
     <div className="flex gap-3 px-4 py-2">
       <div
-        className="w-8 h-8 rounded-full shrink-0 flex items-center justify-center text-[10px] font-bold text-white mt-0.5"
+        className="w-8 h-8 rounded-full shrink-0 flex items-center justify-center text-[12px] font-bold text-white mt-0.5"
         style={{ backgroundColor: color }}
       >
         {initial}
       </div>
       <div className="flex flex-col justify-center gap-1">
-        <span className="text-[11px] font-semibold" style={{ color }}>
+        <span className="text-[13px] font-semibold" style={{ color }}>
           {label}
         </span>
         <div

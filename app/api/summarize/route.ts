@@ -7,12 +7,13 @@ import { openRouterReferer } from "@/lib/openrouter-referer";
 interface SummarizeRequestBody {
   topic?: string;
   allMessages?: Array<{ model: string; content: string; round: number }>;
-  /** OpenRouter model id for synthesis */
   model?: string;
 }
 
+const GEMINI_SUMMARIZER = "google/gemini-pro-1.5";
+
 const SAFE_DEFAULT: DebateSummary = {
-  generatedBy: "claude",
+  generatedBy: "gemini",
   consensus: "Unable to generate",
   coreTension: "Unable to generate",
   strongestArgument: "Unable to generate",
@@ -26,7 +27,7 @@ export async function POST(
   req: NextRequest
 ): Promise<NextResponse<DebateSummary>> {
   const body = (await req.json()) as SummarizeRequestBody;
-  const { topic = "", allMessages = [], model = "anthropic/claude-sonnet-4-5" } = body;
+  const { topic = "", allMessages = [] } = body;
 
   const systemPrompt = `You are synthesizing a structured multi-model AI debate into a decision-quality summary.
 
@@ -69,7 +70,7 @@ Produce the summary now.`;
         "X-Title": "Polymath X",
       },
       body: JSON.stringify({
-        model,
+        model: GEMINI_SUMMARIZER,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
@@ -90,13 +91,12 @@ Produce the summary now.`;
     };
     const raw = data.choices[0]?.message?.content ?? "";
 
-    // Strip markdown fences if present
     const cleaned = raw.replace(/```(?:json)?\s*/g, "").replace(/```\s*/g, "").trim();
 
     try {
       const parsed = JSON.parse(cleaned) as Partial<DebateSummary>;
       return NextResponse.json({
-        generatedBy: "claude",
+        generatedBy: "gemini",
         consensus: parsed.consensus ?? SAFE_DEFAULT.consensus,
         coreTension: parsed.coreTension ?? SAFE_DEFAULT.coreTension,
         strongestArgument: parsed.strongestArgument ?? SAFE_DEFAULT.strongestArgument,

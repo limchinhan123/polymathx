@@ -36,13 +36,14 @@ const GEMINI_PERSONAS: Record<string, string> = {
     "Map the interconnections. What are the feedback loops and unintended consequences?",
 };
 
-/** Full lens for Gemini when Black Hat mode is enabled (replaces normal persona). */
-const GEMINI_BLACK_HAT_LENS = `You are playing the Black Hat role in this debate. Your job is to:
+const GROK_BLACK_HAT_SYSTEM = `You are Grok, playing the Black Hat role in this debate. Your job is to:
 1. Actively argue against the prevailing view
 2. Find every reason why the proposed idea will fail
-3. Identify risks, blind spots, and worst-case scenarios others are ignoring
+3. Identify risks, blind spots, and worst-case scenarios the other models are ignoring
 4. Be pessimistic but specific — not cynical for its own sake
-Do not be balanced. Your job is to stress-test the idea ruthlessly.`;
+5. Steel-man the opposing view only to then demolish it
+Do not be balanced. Stress-test ruthlessly.
+150-200 words. Be direct.`;
 
 const DEBATE_STYLES: Record<string, string> = {
   "Steel-man":
@@ -55,11 +56,12 @@ const DEBATE_STYLES: Record<string, string> = {
     "Build on others' points and find synthesis, but do not abandon your position without reason.",
 };
 
-// Map old model IDs → OpenRouter format
 const CLAUDE_MODEL_MAP: Record<string, string> = {
   "claude-3-5-sonnet-20241022": "anthropic/claude-sonnet-4-5",
   "claude-3-haiku-20240307": "anthropic/claude-haiku-4-5",
 };
+
+const GROK_MODEL = "x-ai/grok-2-1212";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -73,18 +75,34 @@ interface DebateSettings {
   personas?: { claude?: string; gpt?: string; gemini?: string };
 }
 
+interface Round1ByModel {
+  claude?: string;
+  gpt?: string;
+  gemini?: string;
+  grok?: string;
+}
+
+interface PreviousResponses {
+  claude?: string;
+  gpt?: string;
+  gemini?: string;
+  grok?: string;
+}
+
 interface DebateRequestBody {
   topic?: string;
+  /** Current debater round (1-indexed). */
   round?: number;
   clarifications?: string[];
   settings?: DebateSettings;
-  previousResponses?: { claude?: string; gpt?: string; gemini?: string };
+  previousResponses?: PreviousResponses;
+  round1ByModel?: Round1ByModel;
   moderatorQuestion?: string;
 }
 
 type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 
-// ── OpenAI client (lazy: avoid build-time init when OPENAI_API_KEY is unset) ─
+// ── OpenAI client (lazy) ────────────────────────────────────────────────────
 
 let openaiClient: OpenAI | null = null;
 function getOpenAI(): OpenAI {
@@ -137,7 +155,7 @@ async function streamFromOpenRouter(
         const text = json.choices[0]?.delta?.content ?? "";
         if (text) onChunk(text);
       } catch {
-        // skip malformed SSE lines
+        /* skip */
       }
     }
   }
@@ -161,6 +179,20 @@ async function streamFromOpenAI(
     const text = chunk.choices[0]?.delta?.content ?? "";
     if (text) onChunk(text);
   }
+}
+
+// ── Position anchor (round 2+) ──────────────────────────────────────────────
+
+function positionAnchorBlock(ownRound1: string | undefined): string {
+  const t = ownRound1?.trim() ?? "";
+  if (!t) return "";
+  const quoted = JSON.stringify(t);
+  return `IMPORTANT — Your position from round 1 was:
+${quoted}
+
+You must maintain intellectual consistency with this position. Before engaging with other models, restate your core position in one sentence. Only change your position if you explicitly acknowledge the change and state the exact reason why.
+
+`;
 }
 
 // ── Prompt builders ─────────────────────────────────────────────────────────
@@ -203,21 +235,54 @@ Give your assessment now.`,
   ];
 }
 
-function round2Prompts(
+function grokRound1Messages(topic: string, clarifications: string[]): ChatMessage[] {
+  return [
+    { role: "system", content: GROK_BLACK_HAT_SYSTEM },
+    {
+      role: "user",
+      content: `Topic: ${topic}
+
+Clarifications from the human:
+${clarifications.length > 0 ? clarifications.join("\n") : "None provided"}
+
+Give your Black Hat assessment now.`,
+    },
+  ];
+}
+
+function roundNPrompts(
   modelName: string,
   personaDef: string,
   styleDef: string,
   topic: string,
-  previousResponses: { claude?: string; gpt?: string; gemini?: string },
-  moderatorQuestion: string
+  previousResponses: PreviousResponses,
+  moderatorQuestion: string,
+  debateRound: number,
+  ownRound1: string | undefined
 ): ChatMessage[] {
+  const prevRound = debateRound - 1;
+  const header =
+    debateRound === 2
+      ? "Round 1 responses:"
+      : `Responses from round ${prevRound}:`;
+
+  let body = `${header}
+Claude: ${previousResponses.claude ?? ""}
+GPT-4o: ${previousResponses.gpt ?? ""}
+Gemini: ${previousResponses.gemini ?? ""}`;
+  if (previousResponses.grok !== undefined && previousResponses.grok !== "") {
+    body += `\nGrok: ${previousResponses.grok}`;
+  }
+
+  const anchor = positionAnchorBlock(ownRound1);
+
   return [
     {
       role: "system",
-      content: `You are ${modelName} in round 2 of a structured debate. Your perspective lens: ${personaDef}
+      content: `${anchor}You are ${modelName} in round ${debateRound} of a structured debate. Your perspective lens: ${personaDef}
 Debate style: ${styleDef}
 
-You have read the round 1 responses below.
+You have read the previous round responses below.
 Your task:
 1. Identify the strongest argument made against your likely position
 2. Steel-man it fully before responding
@@ -234,15 +299,52 @@ RULES:
       role: "user",
       content: `Topic: ${topic}
 
-Round 1 responses:
-Claude: ${previousResponses.claude ?? ""}
-GPT-4o: ${previousResponses.gpt ?? ""}
-Gemini: ${previousResponses.gemini ?? ""}
+${body}
 
 Moderator's follow-up question:
 ${moderatorQuestion}
 
-Give your round 2 response now.`,
+Give your round ${debateRound} response now.`,
+    },
+  ];
+}
+
+function grokRoundNMessages(
+  topic: string,
+  clarifications: string[],
+  previousResponses: PreviousResponses,
+  moderatorQuestion: string,
+  debateRound: number,
+  ownRound1: string | undefined
+): ChatMessage[] {
+  const prevRound = debateRound - 1;
+  const header =
+    debateRound === 2
+      ? "Round 1 responses:"
+      : `Responses from round ${prevRound}:`;
+
+  let body = `${header}
+Claude: ${previousResponses.claude ?? ""}
+GPT-4o: ${previousResponses.gpt ?? ""}
+Gemini: ${previousResponses.gemini ?? ""}`;
+  if (previousResponses.grok !== undefined && previousResponses.grok !== "") {
+    body += `\nGrok: ${previousResponses.grok}`;
+  }
+
+  const anchor = positionAnchorBlock(ownRound1);
+
+  return [
+    { role: "system", content: `${anchor}${GROK_BLACK_HAT_SYSTEM}` },
+    {
+      role: "user",
+      content: `Topic: ${topic}
+
+${body}
+
+Moderator's follow-up question:
+${moderatorQuestion}
+
+Give your round ${debateRound} Black Hat response now.`,
     },
   ];
 }
@@ -253,10 +355,11 @@ export async function POST(req: NextRequest): Promise<Response> {
   const body = (await req.json()) as DebateRequestBody;
   const {
     topic = "",
-    round = 1,
+    round: debateRound = 1,
     clarifications = [],
     settings = {},
     previousResponses = {},
+    round1ByModel = {},
     moderatorQuestion = "",
   } = body;
 
@@ -271,20 +374,66 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   const claudePersonaDef = CLAUDE_PERSONAS[claudePersona] ?? claudePersona;
   const gptPersonaDef = GPT_PERSONAS[gptPersona] ?? gptPersona;
-  const geminiPersonaDef = blackHatMode
-    ? GEMINI_BLACK_HAT_LENS
-    : (GEMINI_PERSONAS[geminiPersona] ?? geminiPersona);
+  const geminiPersonaDef = GEMINI_PERSONAS[geminiPersona] ?? geminiPersona;
 
-  // Map model IDs to OpenRouter format where needed
   let claudeModel = settings.claudeModel ?? "anthropic/claude-sonnet-4-5";
   if (CLAUDE_MODEL_MAP[claudeModel]) claudeModel = CLAUDE_MODEL_MAP[claudeModel];
   const gptModel = settings.gptModel ?? "gpt-4o";
   const geminiModel = settings.geminiModel ?? "google/gemini-2.0-flash-001";
 
-  const buildMessages = (name: string, personaDef: string): ChatMessage[] =>
-    round <= 1
-      ? round1Prompts(name, personaDef, styleDef, topic, clarifications)
-      : round2Prompts(name, personaDef, styleDef, topic, previousResponses, moderatorQuestion);
+  const isRound1 = debateRound <= 1;
+
+  const claudeMessages = isRound1
+    ? round1Prompts("Claude", claudePersonaDef, styleDef, topic, clarifications)
+    : roundNPrompts(
+        "Claude",
+        claudePersonaDef,
+        styleDef,
+        topic,
+        previousResponses,
+        moderatorQuestion,
+        debateRound,
+        round1ByModel.claude
+      );
+
+  const gptMessages = isRound1
+    ? round1Prompts("GPT-4o", gptPersonaDef, styleDef, topic, clarifications)
+    : roundNPrompts(
+        "GPT-4o",
+        gptPersonaDef,
+        styleDef,
+        topic,
+        previousResponses,
+        moderatorQuestion,
+        debateRound,
+        round1ByModel.gpt
+      );
+
+  const geminiMessages = isRound1
+    ? round1Prompts("Gemini", geminiPersonaDef, styleDef, topic, clarifications)
+    : roundNPrompts(
+        "Gemini",
+        geminiPersonaDef,
+        styleDef,
+        topic,
+        previousResponses,
+        moderatorQuestion,
+        debateRound,
+        round1ByModel.gemini
+      );
+
+  const grokMessages =
+    blackHatMode &&
+    (isRound1
+      ? grokRound1Messages(topic, clarifications)
+      : grokRoundNMessages(
+          topic,
+          clarifications,
+          previousResponses,
+          moderatorQuestion,
+          debateRound,
+          round1ByModel.grok
+        ));
 
   const encoder = new TextEncoder();
 
@@ -292,72 +441,74 @@ export async function POST(req: NextRequest): Promise<Response> {
     async start(controller) {
       function send(model: string, chunk: string, done: boolean) {
         try {
-          controller.enqueue(
-            encoder.encode(JSON.stringify({ model, chunk, done }) + "\n")
-          );
+          controller.enqueue(encoder.encode(JSON.stringify({ model, chunk, done }) + "\n"));
         } catch {
-          // controller already closed
+          /* closed */
         }
       }
 
-      await Promise.allSettled([
-        // Claude via OpenRouter
+      const tasks: Promise<void>[] = [
         (async () => {
           try {
-            await streamFromOpenRouter(
-              claudeModel,
-              buildMessages("Claude", claudePersonaDef),
-              temperature,
-              (chunk) => send("claude", chunk, false)
+            await streamFromOpenRouter(claudeModel, claudeMessages, temperature, (chunk) =>
+              send("claude", chunk, false)
             );
             send("claude", "", true);
           } catch (err) {
             console.error("[debate] claude error:", err);
-            send("claude", "[Model unavailable — continuing with 2 models]", false);
+            send("claude", "[Model unavailable — continuing with other models]", false);
             send("claude", "", true);
           }
         })(),
-
-        // GPT-4o via OpenAI
         (async () => {
           try {
-            await streamFromOpenAI(
-              gptModel,
-              buildMessages("GPT-4o", gptPersonaDef),
-              temperature,
-              (chunk) => send("gpt4o", chunk, false)
+            await streamFromOpenAI(gptModel, gptMessages, temperature, (chunk) =>
+              send("gpt4o", chunk, false)
             );
             send("gpt4o", "", true);
           } catch (err) {
             console.error("[debate] gpt4o error:", err);
-            send("gpt4o", "[Model unavailable — continuing with 2 models]", false);
+            send("gpt4o", "[Model unavailable — continuing with other models]", false);
             send("gpt4o", "", true);
           }
         })(),
-
-        // Gemini via OpenRouter
         (async () => {
           try {
-            await streamFromOpenRouter(
-              geminiModel,
-              buildMessages("Gemini", geminiPersonaDef),
-              temperature,
-              (chunk) => send("gemini", chunk, false)
+            await streamFromOpenRouter(geminiModel, geminiMessages, temperature, (chunk) =>
+              send("gemini", chunk, false)
             );
             send("gemini", "", true);
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            console.error("[debate] gemini error:", msg);
-            send("gemini", "[Model unavailable — continuing with 2 models]", false);
+            console.error("[debate] gemini error:", err);
+            send("gemini", "[Model unavailable — continuing with other models]", false);
             send("gemini", "", true);
           }
         })(),
-      ]);
+      ];
+
+      if (blackHatMode && grokMessages) {
+        tasks.push(
+          (async () => {
+            try {
+              await streamFromOpenRouter(GROK_MODEL, grokMessages, temperature, (chunk) =>
+                send("grok", chunk, false)
+              );
+              send("grok", "", true);
+            } catch (err) {
+              console.error("[debate] grok error:", err);
+              send("grok", "[Model unavailable — continuing without Grok]", false);
+              send("grok", "", true);
+            }
+          })()
+        );
+      }
+
+      await Promise.allSettled(tasks);
 
       try {
         controller.close();
       } catch {
-        // already closed
+        /* */
       }
     },
   });

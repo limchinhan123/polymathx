@@ -64,7 +64,7 @@ export default function SettingsTab() {
 
       {/* ── Moderator & Summarizer ── */}
       <Section title="Roles">
-        <p className="text-[10px] text-[#555] -mt-2 mb-1 leading-relaxed">
+        <p className="text-[12px] text-[#555] -mt-2 mb-1 leading-[1.6]">
           Moderator runs between rounds; summarizer produces the final write-up (OpenRouter).
         </p>
         <ModelSelect
@@ -72,6 +72,7 @@ export default function SettingsTab() {
           color="#EF9F27"
           value={settings.moderatorModel}
           options={[
+            { value: "mistralai/mistral-large", label: "Mistral Large" },
             { value: "deepseek/deepseek-chat", label: "DeepSeek" },
             { value: "claude-3-haiku-20240307", label: "Claude Haiku" },
           ]}
@@ -82,6 +83,7 @@ export default function SettingsTab() {
           color="#8B7CF6"
           value={settings.summarizerModel}
           options={[
+            { value: "google/gemini-pro-1.5", label: "Gemini Pro 1.5" },
             { value: "claude-3-5-sonnet-20241022", label: "Claude Sonnet" },
             { value: "claude-3-haiku-20240307", label: "Claude Haiku" },
           ]}
@@ -122,8 +124,8 @@ export default function SettingsTab() {
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-[12px] font-semibold text-[#E0E0E0]">Black Hat Mode</p>
-              <p className="text-[10px] text-[#666] mt-1 leading-relaxed">
-                Forces Gemini to argue against the idea
+              <p className="text-[12px] text-[#666] mt-1 leading-[1.6]">
+                Adds Grok as a 4th debater arguing against the idea
               </p>
             </div>
             <button
@@ -297,7 +299,7 @@ function HistorySyncSection() {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <h3 className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#444] mb-3">
+      <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#444] mb-3">
         {title}
       </h3>
       <div className="space-y-2">{children}</div>
@@ -320,12 +322,14 @@ function ModelSelect({ label, color, value, options, onChange }: ModelSelectProp
         className="w-2 h-2 rounded-full shrink-0"
         style={{ backgroundColor: color }}
       />
-      <span className="text-[12px] text-[#AAA] w-20 shrink-0">{label}</span>
+      <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[#AAA] w-24 shrink-0">
+        {label}
+      </span>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className="flex-1 bg-[#1A1A1A] border border-[#2A2A2A] rounded-lg px-2 py-1.5
-                   text-[11px] text-[#CCC] outline-none focus:border-[#3A3A3A]
+                   text-[13px] text-[#CCC] outline-none focus:border-[#3A3A3A]
                    appearance-none cursor-pointer"
         style={{ colorScheme: "dark" }}
       >
@@ -355,7 +359,7 @@ function ChipGroup<T extends string>({ options, value, color, onChange }: ChipGr
           <button
             key={opt}
             onClick={() => onChange(opt)}
-            className="text-[11px] px-2.5 py-1 rounded-full border font-medium transition-all"
+            className="text-[12px] px-2.5 py-1 rounded-full border font-medium transition-all"
             style={{
               backgroundColor: active ? `${color}20` : "transparent",
               borderColor: active ? `${color}60` : "#2A2A2A",

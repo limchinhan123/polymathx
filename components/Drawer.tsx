@@ -21,16 +21,28 @@ export default function Drawer() {
     return () => window.removeEventListener("keydown", handler);
   }, [drawerOpen, dispatch]);
 
-  // Prevent body scroll when drawer is open
+  // Prevent body scroll when drawer is open (mobile / tablet only — desktop uses sidebar)
   useEffect(() => {
-    document.body.style.overflow = drawerOpen ? "hidden" : "";
-    return () => { document.body.style.overflow = ""; };
+    if (!drawerOpen) {
+      document.body.style.overflow = "";
+      return;
+    }
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const apply = () => {
+      document.body.style.overflow = drawerOpen && !mq.matches ? "hidden" : "";
+    };
+    apply();
+    mq.addEventListener("change", apply);
+    return () => {
+      mq.removeEventListener("change", apply);
+      document.body.style.overflow = "";
+    };
   }, [drawerOpen]);
 
   if (!drawerOpen) return null;
 
   return (
-    <>
+    <div className="lg:hidden">
       {/* Backdrop */}
       <div
         className="drawer-backdrop animate-fade-in"
@@ -84,6 +96,6 @@ export default function Drawer() {
           {drawerTab === "history" ? <HistoryTab /> : <SettingsTab />}
         </div>
       </aside>
-    </>
+    </div>
   );
 }

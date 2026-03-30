@@ -126,13 +126,13 @@ function SummarySection({ icon, label, color, content }: SummarySectionProps) {
       <div className="flex items-center gap-1.5 mb-2">
         {icon}
         <span
-          className="text-[10px] font-semibold uppercase tracking-[0.12em]"
+          className="text-[13px] font-semibold uppercase tracking-[0.08em]"
           style={{ color }}
         >
           {label}
         </span>
       </div>
-      <p className="text-[12px] text-[#CCC] leading-relaxed">{content}</p>
+      <p className="text-[15px] text-[#CCC] leading-[1.65]">{content}</p>
     </div>
   );
 }

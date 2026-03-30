@@ -5,12 +5,12 @@ import { openRouterReferer } from "@/lib/openrouter-referer";
 
 interface ModerateRequestBody {
   topic?: string;
-  /** OpenRouter model id (e.g. deepseek/deepseek-chat, anthropic/claude-haiku-4-5) */
   model?: string;
   responses?: {
     claude?: string;
     gpt?: string;
     gemini?: string;
+    grok?: string;
   };
 }
 
@@ -19,6 +19,8 @@ interface ModerateResponseBody {
   agreementScore: number;
   nextQuestion: string;
 }
+
+const MISTRAL_MODERATOR = "mistralai/mistral-large";
 
 const SAFE_DEFAULT: ModerateResponseBody = {
   tension: "Models disagreed on core assumptions",
@@ -32,9 +34,9 @@ export async function POST(
   req: NextRequest
 ): Promise<NextResponse<ModerateResponseBody>> {
   const body = (await req.json()) as ModerateRequestBody;
-  const { topic = "", responses = {}, model = "deepseek/deepseek-chat" } = body;
+  const { topic = "", responses = {} } = body;
 
-  const systemPrompt = `You are a debate moderator analyzing responses from three AI models. Be precise and analytical.
+  const systemPrompt = `You are a debate moderator analyzing responses from AI models. Be precise and analytical.
 
 Return ONLY valid JSON, no other text:
 {
@@ -48,13 +50,15 @@ Rules:
 - agreementScore: 0-10, where 10 = full consensus
 - nextQuestion: one pointed follow-up question, max 25 words`;
 
-  const userPrompt = `Topic: ${topic}
+  let userPrompt = `Topic: ${topic}
 
 Claude said: ${responses.claude ?? ""}
 GPT-4o said: ${responses.gpt ?? ""}
-Gemini said: ${responses.gemini ?? ""}
-
-Identify the tension, score agreement, and pose the next question.`;
+Gemini said: ${responses.gemini ?? ""}`;
+  if (responses.grok !== undefined && responses.grok !== "") {
+    userPrompt += `\nGrok said: ${responses.grok}`;
+  }
+  userPrompt += `\n\nIdentify the tension, score agreement, and pose the next question.`;
 
   try {
     const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -66,7 +70,7 @@ Identify the tension, score agreement, and pose the next question.`;
         "X-Title": "Polymath X",
       },
       body: JSON.stringify({
-        model,
+        model: MISTRAL_MODERATOR,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
@@ -87,7 +91,6 @@ Identify the tension, score agreement, and pose the next question.`;
     };
     const raw = data.choices[0]?.message?.content ?? "";
 
-    // Strip markdown fences if present
     const cleaned = raw.replace(/```(?:json)?\s*/g, "").replace(/```\s*/g, "").trim();
 
     try {

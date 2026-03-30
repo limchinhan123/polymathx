@@ -12,7 +12,7 @@ export default function TopicPill() {
     <div className="px-4 py-2 shrink-0">
       <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#141414] border border-[#2A2A2A] max-w-full">
         <MessageSquare size={12} className="text-[#EF9F27] shrink-0" />
-        <p className="text-xs text-[#999] truncate flex-1 min-w-0">{state.topic}</p>
+        <p className="text-[15px] leading-snug text-[#999] truncate flex-1 min-w-0">{state.topic}</p>
       </div>
     </div>
   );

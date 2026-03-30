@@ -1,12 +1,13 @@
 // ─── Model identifiers ────────────────────────────────────────────────────────
 
-export type ModelId = "claude" | "gpt4o" | "gemini" | "deepseek";
+export type ModelId = "claude" | "gpt4o" | "gemini" | "deepseek" | "grok";
 
 export const MODEL_LABELS: Record<ModelId, string> = {
   claude: "Claude",
   gpt4o: "GPT-4o",
   gemini: "Gemini",
   deepseek: "DeepSeek",
+  grok: "Grok",
 };
 
 export const MODEL_COLORS: Record<ModelId, string> = {
@@ -14,6 +15,7 @@ export const MODEL_COLORS: Record<ModelId, string> = {
   gpt4o: "#10A37F",
   gemini: "#4285F4",
   deepseek: "#EF9F27",
+  grok: "#FF6B6B",
 };
 
 // ─── Debate state machine ─────────────────────────────────────────────────────
@@ -33,8 +35,8 @@ export type DebateStatus =
 export type ClaudeModel = "claude-3-5-sonnet-20241022" | "claude-3-haiku-20240307";
 export type GptModel = "gpt-4o" | "gpt-4o-mini";
 export type GeminiModel = "google/gemini-2.0-flash-001" | "google/gemini-flash-1.5-8b";
-export type ModeratorModel = "deepseek/deepseek-chat" | "claude-3-haiku-20240307";
-export type SummarizerModel = "claude-3-5-sonnet-20241022" | "claude-3-haiku-20240307";
+export type ModeratorModel = "mistralai/mistral-large" | "deepseek/deepseek-chat" | "claude-3-haiku-20240307";
+export type SummarizerModel = "google/gemini-pro-1.5" | "claude-3-5-sonnet-20241022" | "claude-3-haiku-20240307";
 
 export type DebateStyle = "Steel-man" | "Socratic" | "Devil's Advocate" | "Collaborative";
 
@@ -50,7 +52,7 @@ export interface DebateSettings {
   summarizerModel: SummarizerModel;
   temperature: number;
   debateStyle: DebateStyle;
-  /** When true, Gemini uses Black Hat role (stress-test / argue against the idea). */
+  /** When true, Grok joins as a 4th debater in a fixed Black Hat role. */
   blackHatMode: boolean;
   claudePersona: ClaudePersona;
   gptPersona: GptPersona;
@@ -61,8 +63,8 @@ export const DEFAULT_SETTINGS: DebateSettings = {
   claudeModel: "claude-3-5-sonnet-20241022",
   gptModel: "gpt-4o",
   geminiModel: "google/gemini-2.0-flash-001",
-  moderatorModel: "deepseek/deepseek-chat",
-  summarizerModel: "claude-3-5-sonnet-20241022",
+  moderatorModel: "mistralai/mistral-large",
+  summarizerModel: "google/gemini-pro-1.5",
   temperature: 0.7,
   debateStyle: "Socratic",
   blackHatMode: false,
@@ -87,7 +89,7 @@ export interface Message {
   isStreaming?: boolean;
   agreementScore?: number;
   nextQuestion?: string;
-  /** True when this Gemini reply was generated with Black Hat mode on. */
+  /** Grok in Black Hat mode — show hat badge. */
   blackHat?: boolean;
 }
 
@@ -100,6 +102,16 @@ export interface DebateSummary {
   practicalTakeaway: string;
   openQuestions: string;
   generatedBy: ModelId;
+}
+
+// ─── Judge ────────────────────────────────────────────────────────────────────
+
+export interface JudgeVerdict {
+  verdict: string;
+  reasoning: string;
+  mvp: string;
+  dissent: string;
+  ruling: string;
 }
 
 // ─── Clarifying questions ─────────────────────────────────────────────────────
@@ -128,6 +140,8 @@ export interface DebateState {
   loadingModel: ModelId | null;
   error: string | null;
   agreementScore: number | null;
+  judgeVerdict: JudgeVerdict | null;
+  judgeLoading: boolean;
 }
 
 // ─── Actions ──────────────────────────────────────────────────────────────────
@@ -143,6 +157,7 @@ export type DebateAction =
   | { type: "ADD_MESSAGES"; payload: Message[] }
   | { type: "START_MODERATION" }
   | { type: "START_ROUND_2" }
+  | { type: "START_NEXT_ROUND"; payload: number }
   | { type: "CONTINUE_DEBATE"; payload?: { extraRounds?: number } }
   | { type: "START_SUMMARIZING" }
   | { type: "SET_SUMMARY"; payload: DebateSummary }
@@ -162,6 +177,9 @@ export type DebateAction =
   | { type: "SET_AGREEMENT_SCORE"; payload: number }
   | { type: "REMOVE_EMPTY_STREAMING_FOR_ROUND"; payload: number }
   | { type: "RESTORE_STATUS_AFTER_MOD_FAILED" }
+  | { type: "START_JUDGE" }
+  | { type: "JUDGE_COMPLETE"; payload: JudgeVerdict }
+  | { type: "JUDGE_CANCEL_LOADING" }
   | {
       type: "LOAD_SAVED_DEBATE";
       payload: {

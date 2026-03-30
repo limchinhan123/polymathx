@@ -2,7 +2,7 @@ import type { Doc } from "@/convex/_generated/dataModel";
 import type { DebateSettings, DebateSummary, Message, ModelId } from "./types";
 import { DEFAULT_SETTINGS } from "./types";
 
-const MODEL_IDS: ModelId[] = ["claude", "gpt4o", "gemini", "deepseek"];
+const MODEL_IDS: ModelId[] = ["claude", "gpt4o", "gemini", "deepseek", "grok"];
 
 function asModelId(raw: string): ModelId {
   return MODEL_IDS.includes(raw as ModelId) ? (raw as ModelId) : "claude";

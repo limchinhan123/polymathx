@@ -35,6 +35,9 @@ const config: Config = {
       },
       maxWidth: {
         content: "390px",
+        tablet: "680px",
+        shell: "1280px",
+        bubble: "680px",
       },
       animation: {
         "slide-in": "slideIn 0.3s ease-out",

@@ -43,22 +43,31 @@ export default function Header() {
               <span className="typing-dot w-1.5 h-1.5 rounded-full bg-[#EF9F27] inline-block" />
             </div>
             {state.loadingModel && (
-              <span className="text-[10px] text-[#666] capitalize">
-                {state.loadingModel === "gpt4o" ? "GPT-4o" : state.loadingModel}
+              <span className="text-[12px] text-[#666]">
+                {state.loadingModel === "gpt4o"
+                  ? "GPT-4o"
+                  : state.loadingModel === "claude"
+                    ? "Claude"
+                    : state.loadingModel === "gemini"
+                      ? "Gemini"
+                      : state.loadingModel === "grok"
+                        ? "Grok"
+                        : state.loadingModel}
               </span>
             )}
           </div>
         )}
       </div>
 
-      {/* Menu icon */}
+      {/* Menu icon — hidden on lg+ (desktop uses sidebar) */}
       <button
         aria-label="Open menu"
         onClick={() => dispatch({ type: "OPEN_DRAWER" })}
-        className="w-9 h-9 flex items-center justify-center rounded-xl text-[#888] hover:text-white hover:bg-[#1A1A1A] transition-colors"
+        className="lg:hidden w-9 h-9 flex items-center justify-center rounded-xl text-[#888] hover:text-white hover:bg-[#1A1A1A] transition-colors"
       >
         <Menu size={18} />
       </button>
+      <div className="hidden lg:block w-9 shrink-0" aria-hidden />
     </header>
   );
 }
