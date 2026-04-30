@@ -9,7 +9,6 @@ import {
   type KeyboardEvent,
 } from "react";
 import {
-  Mic,
   Send,
   Loader2,
   Paperclip,
@@ -21,47 +20,6 @@ import {
 import NextImage from "next/image";
 import { useDebate } from "@/lib/debate-store";
 import { processFile } from "@/lib/file-processor";
-
-/** Local types — Web Speech API (DOM lib may omit these in some TS configs). */
-interface WebSpeechResult {
-  readonly isFinal: boolean;
-  readonly 0: { readonly transcript: string };
-}
-
-interface WebSpeechResultList {
-  readonly length: number;
-  readonly [index: number]: WebSpeechResult;
-}
-
-interface WebSpeechRecognitionEvent {
-  readonly resultIndex: number;
-  readonly results: WebSpeechResultList;
-}
-
-interface WebSpeechRecognitionErrorEvent {
-  readonly error: string;
-}
-
-interface WebSpeechRecognition extends EventTarget {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  start(): void;
-  stop(): void;
-  abort(): void;
-  onresult: ((ev: WebSpeechRecognitionEvent) => void) | null;
-  onerror: ((ev: WebSpeechRecognitionErrorEvent) => void) | null;
-  onend: (() => void) | null;
-}
-
-function getSpeechRecognitionCtor(): (new () => WebSpeechRecognition) | undefined {
-  if (typeof window === "undefined") return undefined;
-  const w = window as Window & {
-    SpeechRecognition?: new () => WebSpeechRecognition;
-    webkitSpeechRecognition?: new () => WebSpeechRecognition;
-  };
-  return w.SpeechRecognition ?? w.webkitSpeechRecognition;
-}
 
 /** Matches `text-[16px] leading-[1.6]` + `py-2.5` (10px × 2) for auto-grow cap. */
 const TEXTAREA_LINE_HEIGHT_PX = 16 * 1.6;
@@ -81,8 +39,6 @@ function detectMobileUa(): boolean {
 export default function InputRow() {
   const { state, dispatch, startDebate } = useDebate();
   const [text, setText] = useState("");
-  const [isListening, setIsListening] = useState(false);
-  const [voiceHint, setVoiceHint] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const [fileLoading, setFileLoading] = useState(false);
   const [isSuggested, setIsSuggested] = useState(false);
@@ -95,10 +51,6 @@ export default function InputRow() {
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const recognitionRef = useRef<WebSpeechRecognition | null>(null);
-  const baseTextRef = useRef("");
-  const sessionFinalRef = useRef("");
-  const voiceHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const attachedFile = state.attachedFile;
 
@@ -106,119 +58,13 @@ export default function InputRow() {
   const isLoading = state.isLoading;
   const isComplete = state.status === "complete";
 
-  const placeholder = isListening
-    ? "Listening… tap mic to stop"
-    : isIdle
-      ? "What should we explore?"
-      : isComplete
-        ? "Complete — start fresh"
-        : "Observe the exchange…";
+  const placeholder = isIdle
+    ? "What should we explore?"
+    : isComplete
+      ? "Complete — start fresh"
+      : "Observe the exchange…";
 
   const canSend = isIdle && text.trim().length > 0 && !isLoading;
-
-  const showVoiceUnavailable = useCallback(() => {
-    if (voiceHintTimerRef.current) clearTimeout(voiceHintTimerRef.current);
-    setVoiceHint("Voice not available");
-    voiceHintTimerRef.current = setTimeout(() => {
-      setVoiceHint(null);
-      voiceHintTimerRef.current = null;
-    }, 2500);
-  }, []);
-
-  const stopListening = useCallback(() => {
-    const rec = recognitionRef.current;
-    if (rec) {
-      try {
-        rec.stop();
-      } catch {
-        try {
-          rec.abort();
-        } catch {
-          /* ignore */
-        }
-      }
-    }
-    recognitionRef.current = null;
-    setIsListening(false);
-  }, []);
-
-  const startListening = useCallback(() => {
-    const Ctor = getSpeechRecognitionCtor();
-    if (!Ctor) {
-      showVoiceUnavailable();
-      return;
-    }
-
-    baseTextRef.current = text;
-    sessionFinalRef.current = "";
-
-    const rec = new Ctor();
-    recognitionRef.current = rec;
-    rec.lang = "en-US";
-    rec.continuous = true;
-    rec.interimResults = true;
-
-    rec.onresult = (event: WebSpeechRecognitionEvent) => {
-      let interim = "";
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const result = event.results[i];
-        const piece = result[0]?.transcript ?? "";
-        if (result.isFinal) {
-          sessionFinalRef.current += piece;
-        } else {
-          interim += piece;
-        }
-      }
-      const prefix = baseTextRef.current;
-      const spoken = sessionFinalRef.current + interim;
-      const spacer = prefix && spoken.trim() ? " " : "";
-      setText(prefix + spacer + spoken);
-    };
-
-    rec.onerror = (event: WebSpeechRecognitionErrorEvent) => {
-      if (event.error === "aborted") return;
-      setIsListening(false);
-      recognitionRef.current = null;
-      showVoiceUnavailable();
-    };
-
-    rec.onend = () => {
-      recognitionRef.current = null;
-      setIsListening(false);
-    };
-
-    try {
-      rec.start();
-      setIsListening(true);
-    } catch {
-      recognitionRef.current = null;
-      setIsListening(false);
-      showVoiceUnavailable();
-    }
-  }, [text, showVoiceUnavailable]);
-
-  const toggleVoice = useCallback(() => {
-    if (isListening) {
-      stopListening();
-      return;
-    }
-    startListening();
-  }, [isListening, startListening, stopListening]);
-
-  useEffect(() => {
-    return () => {
-      if (voiceHintTimerRef.current) clearTimeout(voiceHintTimerRef.current);
-      const rec = recognitionRef.current;
-      if (rec) {
-        try {
-          rec.abort();
-        } catch {
-          /* ignore */
-        }
-        recognitionRef.current = null;
-      }
-    };
-  }, []);
 
   useEffect(() => {
     setIsMobile(detectMobileUa());
@@ -294,7 +140,6 @@ export default function InputRow() {
     syncTextareaHeight,
     isIdle,
     isLoading,
-    isListening,
     isComplete,
     composerSheetOpen,
     isMobile,
@@ -377,8 +222,6 @@ export default function InputRow() {
     [isMobile, handleSend]
   );
 
-  const micDisabled = !isIdle || isLoading;
-
   const hasFile = !!attachedFile;
 
   const lineCount = text === "" ? 0 : text.split("\n").length;
@@ -388,24 +231,6 @@ export default function InputRow() {
     text.trim() === ""
       ? placeholder
       : text.replace(/\n/g, " ").trim();
-
-  const micButton = (
-    <button
-      type="button"
-      aria-label={isListening ? "Stop voice input" : "Start voice input"}
-      aria-pressed={isListening}
-      disabled={micDisabled}
-      onClick={toggleVoice}
-      className={`w-10 h-10 flex items-center justify-center rounded-xl transition-colors disabled:opacity-30
-        ${
-          isListening
-            ? "text-[#EF9F27] bg-[#EF9F27]/20 ring-2 ring-[#EF9F27]/40 animate-pulse"
-            : "text-[#444] hover:text-[#888] hover:bg-[#141414]"
-        }`}
-    >
-      <Mic size={18} />
-    </button>
-  );
 
   const clipButton = (
     <button
@@ -445,12 +270,9 @@ export default function InputRow() {
   return (
     <div className="px-4 py-3 pb-safe shrink-0 bg-[#0A0A0A] border-t border-[#1A1A1A]">
       {/* Status hints */}
-      {(voiceHint ?? fileError) && (
-        <p
-          className={`text-center text-[11px] mb-2 ${fileError ? "text-red-400/90" : "text-amber-500/90"}`}
-          role="status"
-        >
-          {fileError ?? voiceHint}
+      {fileError && (
+        <p className="text-center text-[11px] mb-2 text-red-400/90" role="status">
+          {fileError}
         </p>
       )}
 
@@ -556,7 +378,7 @@ export default function InputRow() {
                 }}
                 onKeyDown={handleKeyDown}
                 placeholder={placeholder}
-                disabled={!isIdle || isLoading || isListening}
+                disabled={!isIdle || isLoading}
                 rows={4}
                 enterKeyHint="enter"
                 className="mb-3 min-h-[120px] max-h-[300px] w-full shrink-0 resize-none overflow-y-auto border-0 bg-transparent
@@ -566,10 +388,7 @@ export default function InputRow() {
               <div className="min-h-0 flex-1" aria-hidden="true" />
 
               <div className="flex shrink-0 items-end justify-between gap-3">
-                <div className="flex items-end gap-2">
-                  {micButton}
-                  {clipButton}
-                </div>
+                <div className="flex items-end gap-2">{clipButton}</div>
                 <button
                   type="button"
                   aria-label="Send"
@@ -595,7 +414,6 @@ export default function InputRow() {
 
       {!composerSheetOpen && (
         <div className="flex items-end gap-2">
-          {micButton}
           {clipButton}
           {isMobile ? (
             <button
@@ -627,7 +445,7 @@ export default function InputRow() {
               }}
               onKeyDown={handleKeyDown}
               placeholder={placeholder}
-              disabled={!isIdle || isLoading || isListening}
+              disabled={!isIdle || isLoading}
               rows={1}
               enterKeyHint="send"
               aria-label={placeholder}

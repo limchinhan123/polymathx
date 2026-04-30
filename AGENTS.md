@@ -28,7 +28,6 @@ Details and placeholders: **`.env.example`**. Never commit `.env` / `.env.local`
 | Settings → OpenRouter model ids | `lib/openrouter-models.ts` (`toOpenRouterModeratorModel`, `toOpenRouterSummarizerModel`) |
 | Types + reducer actions | `lib/types.ts` |
 | Error UI (dismissible banner) | `components/ChatThread.tsx` |
-| Voice input (Web Speech API) | `components/InputRow.tsx` |
 | Convex provider | `components/ConvexClientProvider.tsx` |
 | OpenRouter Referer helper | `lib/openrouter-referer.ts` |
 
