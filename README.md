@@ -1,123 +1,105 @@
-# Polymath X
+<div align="center">
+  <h1>Polymath X 🧠✨</h1>
 
-**Xpand your perspective** — a focused web app where **Claude**, **GPT-4o**, and **Gemini** debate a topic you choose, with **DeepSeek**-powered moderation and summaries. Built with **Next.js 14**, **Convex**, and **OpenRouter** / **OpenAI**.
+  **Xpand your perspective.**
+
+  A focused web application where **Claude**, **GPT-4o**, and **Gemini** debate any topic you choose, featuring DeepSeek-powered moderation, document context injection, and structured summaries.
+
+  [![Next.js](https://img.shields.io/badge/Next.js-14-black?logo=next.js)](https://nextjs.org/)
+  [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?logo=typescript)](https://www.typescriptlang.org/)
+  [![Convex](https://img.shields.io/badge/Convex-Backend-FF5A5F?logo=convex)](https://www.convex.dev/)
+  [![OpenRouter](https://img.shields.io/badge/OpenRouter-AI_Models-4B5563)](https://openrouter.ai/)
+  [![Tailwind CSS](https://img.shields.io/badge/Tailwind-CSS-38B2AC?logo=tailwind-css)](https://tailwindcss.com/)
+</div>
 
 ---
 
-What is this? A Multi-model AI debates on any topic — Claude, GPT-4o & Gemini with DeepSeek moderation. Next.js App Router + Convex + OpenRouter.
+## 📖 Overview
 
+**Polymath X** transforms the way you explore complex topics by orchestrating multi-model AI debates. Instead of relying on a single AI's perspective, Polymath X pits the world's leading foundation models (Claude, GPT-4o, and Gemini) against each other in structured, multi-round debates. 
 
+Whether you are evaluating a business strategy, exploring a philosophical dilemma, or seeking diverse perspectives on an uploaded document, Polymath X provides a rigorous, moderated environment to challenge assumptions and surface nuanced insights.
 
-> Multi-model AI debates on any topic — Claude, GPT-4o & Gemini with DeepSeek moderation. Next.js App Router + Convex + OpenRouter.
+## ✨ Key Features
 
----
+- **Multi-Model Debates:** Watch Claude, GPT-4o, and Gemini stream their arguments in parallel.
+- **Configurable Personas & Styles:** Tailor the debate style (e.g., Socratic, Devil's Advocate, Steel-man) and assign distinct personas to each model (e.g., Claude as an Ethicist, GPT-4o as a Pragmatist).
+- **Document Context Injection:** Upload PDFs, Word documents, or images. The system extracts the text and injects it directly into the debate context, even auto-suggesting topics based on the content.
+- **DeepSeek Moderation:** A dedicated moderator model guides the flow, asks follow-up questions in Round 2, and keeps the debate focused.
+- **Black Hat Mode:** Enable a stress-test lens that introduces a fourth, highly contrarian debater (powered by `deepseek-reasoner`) to actively find flaws in the prevailing arguments.
+- **Cross-Device History Sync:** Debate history is persisted seamlessly via Convex. Use a secure sync key to share your history across desktop and mobile devices.
+- **AI Summaries & Judging:** Export-friendly markdown summaries and formal verdicts delivered by a dedicated judging model.
 
-## Features
+## 🛠️ Tech Stack
 
-- **Three-model debates** with streaming responses and configurable personas / debate style  
-- **Clarifying questions** before round 1  
-- **Round 2** with moderator follow-up  
-- **AI summary** export-friendly markdown  
-- **History** persisted in Convex — use **Settings → History sync** to copy your key and paste it on another browser (phone ↔ desktop) so both see the same list  
-- **Optional password gate** (`NEXT_PUBLIC_ACCESS_PASSWORD`) to limit casual traffic  
-- **PWA-friendly** shell (manifest + service worker)
+- **Framework:** [Next.js 14](https://nextjs.org/) (App Router)
+- **UI & Styling:** React 18, Tailwind CSS, Lucide Icons
+- **Backend & Database:** [Convex](https://www.convex.dev/) for real-time state and history persistence
+- **AI Orchestration:** [OpenRouter](https://openrouter.ai/) (for Claude, Gemini, DeepSeek) and [OpenAI](https://openai.com/) (for native GPT-4o streaming)
+- **Client-side Parsing:** `pdfjs-dist` and `mammoth` for local document extraction
 
-## Tech stack
+## 🚀 Getting Started
 
-| Layer | Choice |
-|--------|--------|
-| Framework | [Next.js](https://nextjs.org/) 14 (App Router) |
-| UI | React 18, Tailwind CSS |
-| Backend data | [Convex](https://www.convex.dev/) |
-| Models | OpenRouter (Claude, Gemini, moderator, summarizer, clarify) + OpenAI (GPT stream) |
+### Prerequisites
 
-## Security & API keys
+- Node.js 18+ and npm
+- A [Convex](https://dashboard.convex.dev/) account and project
+- An [OpenRouter](https://openrouter.ai/) API key
+- An [OpenAI](https://platform.openai.com/) API key
 
-- **Never commit** `.env`, `.env.local`, or any file containing real keys. This repo only ships **`.env.example`** (placeholders).
-- **Server-only secrets** — set on **Vercel → Settings → Environment Variables** (Production):
-  - `OPENROUTER_API_KEY`
-  - `OPENAI_API_KEY`
-- **`NEXT_PUBLIC_*` variables are exposed to the browser** in the built client bundle. That includes:
-  - `NEXT_PUBLIC_CONVEX_URL` — normal for Convex; scope access in Convex functions / rules as needed.
-  - `NEXT_PUBLIC_ACCESS_PASSWORD` — **not** a substitute for full auth. It deters drive-by use; anyone can still call your API routes directly. Combine with **Vercel Deployment Protection**, **OpenRouter / OpenAI usage limits**, and **Convex** rules for real protection.
-- **Rotate keys** if they were ever pasted in chat, issues, or a leaked commit.
+### Local Development
 
-## Prerequisites
-
-- Node.js 18+  
-- npm  
-- [Convex](https://dashboard.convex.dev/) project  
-- [OpenRouter](https://openrouter.ai/) API key  
-- [OpenAI](https://platform.openai.com/) API key (for GPT in `/api/debate`)
-
-## Local development
-
-```bash
-git clone https://github.com/limchinhan123/polymathx.git
-cd polymathx
-cp .env.example .env.local
-# Edit .env.local with your keys and Convex dev URL
-
-npm install
-npx convex dev   # terminal 1 — syncs functions to dev deployment
-npm run dev      # terminal 2 — http://localhost:3000
-```
-
-## Environment variables
-
-| Variable | Scope | Purpose |
-|----------|--------|---------|
-| `OPENROUTER_API_KEY` | Server | OpenRouter calls (Claude, Gemini, moderator, summarize, clarify) |
-| `OPENROUTER_HTTP_REFERER` | Server | Optional; OpenRouter `HTTP-Referer` (defaults to `https://$VERCEL_URL` on Vercel, else `http://localhost:3000`) |
-| `OPENAI_API_KEY` | Server | GPT-4o streaming in debate route |
-| `NEXT_PUBLIC_CONVEX_URL` | Client + build | Convex client URL (dev vs prod) |
-| `NEXT_PUBLIC_ACCESS_PASSWORD` | Client | Optional; if set, password screen before app |
-
-## Deploy (Vercel + Convex)
-
-1. Push this repo to GitHub and **import** it in [Vercel](https://vercel.com/) (or link an existing project to the repo).  
-2. Add the **environment variables** above for **Production** (and Preview if you use previews).  
-3. Deploy. Ensure **`NEXT_PUBLIC_CONVEX_URL`** points at your **production** Convex deployment after `npx convex deploy`.  
-4. Optional: **Settings → Domains** — attach your own hostname or the default `*.vercel.app` URL Vercel assigns (not documented in this repo).  
-5. From the project root:
-
+1. **Clone the repository:**
    ```bash
-   npx convex deploy
+   git clone https://github.com/limchinhan123/polymathx.git
+   cd polymathx
    ```
 
-   Update `NEXT_PUBLIC_CONVEX_URL` on Vercel with the printed production URL, then **Redeploy**.
+2. **Set up environment variables:**
+   ```bash
+   cp .env.example .env.local
+   ```
+   *Edit `.env.local` to include your OpenRouter key, OpenAI key, and Convex dev URL.*
 
-A helper script (local machine, interactive login) lives at `scripts/deploy-polymathx.sh`.
+3. **Install dependencies:**
+   ```bash
+   npm install
+   ```
 
-## Scripts
+4. **Start the development environment:**
+   You will need two terminal windows.
+   
+   *Terminal 1 (Sync Convex backend):*
+   ```bash
+   npx convex dev
+   ```
+   
+   *Terminal 2 (Run Next.js app):*
+   ```bash
+   npm run dev
+   ```
+   Open [http://localhost:3000](http://localhost:3000) to start debating.
 
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Next.js dev server |
-| `npm run build` | Production build |
-| `npm run start` | Run production build locally |
-| `npm run lint` | ESLint |
-| `npm run typecheck` | TypeScript |
-| `npm run convex:dev` | Convex dev sync |
+## 🔒 Security & Environment Variables
 
-## Project layout (high level)
+- **Server-Only Secrets:** `OPENROUTER_API_KEY` and `OPENAI_API_KEY` must never be exposed to the client. On Vercel, set these as Production Environment Variables.
+- **Client Variables:** `NEXT_PUBLIC_CONVEX_URL` is exposed to the browser to connect to your database.
+- **Access Gate:** You can set `NEXT_PUBLIC_ACCESS_PASSWORD` to place a simple password gate in front of the UI. *(Note: This deters casual UI traffic but does not secure the underlying API routes.)*
 
-- `app/` — App Router pages and `app/api/*` route handlers  
-- `components/` — UI  
-- `convex/` — Convex schema, queries, mutations  
-- `lib/` — Debate state, streaming, idle suggestions, device id  
+## 📚 Documentation & Architecture
 
-## License
+For deeper technical details, contributors and operators should review the following internal documentation:
+- [`AGENTS.md`](AGENTS.md): Architecture notes, state conventions, and learned preferences for AI contributors.
+- [`docs/runbook.md`](docs/runbook.md): Human-facing operational steps, including deployment checklists and API key rotation procedures.
+- [`docs/second-brain-polymath-x.md`](docs/second-brain-polymath-x.md): Project vision, timeline, and architectural decisions.
 
-All rights reserved — private project unless you add a `LICENSE` file.
+## 🤝 Contributing
 
-## Documentation
+Contributions are welcome! Please ensure you follow the existing code style, run `npm run lint` and `npm run typecheck` before submitting, and never commit `.env` files or hardcoded secrets.
 
-- **`AGENTS.md`** — short notes for tools and contributors (stack, secrets, conventions).  
-- **`docs/runbook.md`** — step-by-step ops (deploy, Convex prod, rotate keys, troubleshooting).  
-- **`.cursor/rules/polymathx-context.mdc`** — Cursor loads this for the repo (`alwaysApply`); points at the docs above.  
-- **`docs/second-brain-polymath-x.md`** — personal knowledge capture (session learnings); pair with **`docs/notion-second-brain-setup.md`** to import into Notion.
+## 📄 License
+
+All rights reserved. This is a private project unless an explicit `LICENSE` file is added.
 
 ---
-
-**Repo:** [github.com/limchinhan123/polymathx](https://github.com/limchinhan123/polymathx)
+*Repo: [github.com/limchinhan123/polymathx](https://github.com/limchinhan123/polymathx)*
