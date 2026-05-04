@@ -20,6 +20,15 @@
 
 Whether you are evaluating a business strategy, exploring a philosophical dilemma, or seeking diverse perspectives on an uploaded document, Polymath X provides a rigorous, moderated environment to challenge assumptions and surface nuanced insights.
 
+## 📸 Screenshots
+
+<div align="center">
+  <img src="docs/screenshot-login.png" alt="Polymath X — Password-protected login screen with dark theme" width="100%" />
+  <p><em>The password-gated entry screen — clean, minimal, and dark. Access is private by design.</em></p>
+</div>
+
+---
+
 ## ✨ Key Features
 
 - **Multi-Model Debates:** Watch Claude, GPT-4o, and Gemini stream their arguments in parallel.
