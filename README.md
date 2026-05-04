@@ -23,8 +23,8 @@ Whether you are evaluating a business strategy, exploring a philosophical dilemm
 ## 📸 Screenshots
 
 <div align="center">
-  <img src="docs/screenshot-login.png" alt="Polymath X — Password-protected login screen with dark theme" width="100%" />
-  <p><em>The password-gated entry screen — clean, minimal, and dark. Access is private by design.</em></p>
+  <img src="docs/screenshot-app.png" alt="Polymath X — Main debate interface showing Settings panel, persona selectors, debate style, and topic suggestions" width="100%" />
+  <p><em>The main interface — configure debate style (Socratic, Devil's Advocate, Steel-man), assign personas to Claude, GPT-4o, and Gemini, toggle Black Hat Mode, and enter any topic to begin a structured multi-model debate.</em></p>
 </div>
 
 ---
